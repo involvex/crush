@@ -769,29 +769,38 @@
 
         // Send message
         function sendMessage() {
-            console.log('sendMessage() called');
+            console.log('=== SEND MESSAGE START ===');
+            console.log('sendMessage() called at:', new Date().toISOString());
             const content = messageInput.value.trim();
-            console.log('Content:', content, 'isProcessing:', isProcessing, 'currentSessionId:', currentSessionId);
+            console.log('Content:', '"' + content + '"', 'length:', content.length);
+            console.log('isProcessing:', isProcessing);
+            console.log('currentSessionId:', currentSessionId);
+            console.log('WebSocket state:', ws ? ws.readyState : 'no ws');
+
+            // Visual feedback
+            appendMessage('DEBUG', 'Send button clicked! Content: "' + content + '"');
 
             if (content === '') {
-                console.log('Cannot send: content is empty');
-                appendMessage('System', 'Cannot send empty message');
+                console.log('BLOCKED: content is empty');
+                appendMessage('System', '❌ Cannot send empty message');
                 return;
             }
 
             if (isProcessing) {
-                console.log('Cannot send: already processing');
-                appendMessage('System', 'Please wait for the previous message to complete');
+                console.log('BLOCKED: already processing');
+                appendMessage('System', '❌ Please wait for the previous message to complete');
                 return;
             }
 
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                console.log('Cannot send: WebSocket not connected', ws ? ws.readyState : 'no ws');
-                appendMessage('System', 'WebSocket not connected. Please refresh the page.');
+                console.log('BLOCKED: WebSocket not connected');
+                console.log('ws exists:', !!ws);
+                if (ws) console.log('ws.readyState:', ws.readyState);
+                appendMessage('System', '❌ WebSocket not connected. Status: ' + (ws ? ws.readyState : 'no connection'));
                 return;
             }
 
-            console.log('Sending message:', content);
+            console.log('✅ All checks passed, sending message');
             appendMessage('You', content);
             showProgress();
 
@@ -802,28 +811,32 @@
                 messageToSend = { type: 'message', content: content, sessionId: currentSessionId };
             }
 
-            console.log('Message to send:', messageToSend);
+            console.log('Final message object:', JSON.stringify(messageToSend, null, 2));
 
             try {
-                ws.send(JSON.stringify(messageToSend));
+                const messageString = JSON.stringify(messageToSend);
+                console.log('Sending WebSocket message:', messageString);
+                ws.send(messageString);
+                console.log('✅ WebSocket send() completed without error');
                 messageInput.value = '';
                 hideCompletions();
                 isProcessing = true;
-                console.log('Message sent successfully, isProcessing set to true');
+                appendMessage('DEBUG', '✅ Message sent to server');
 
                 // Set a timeout to reset processing state if no response
                 setTimeout(() => {
                     if (isProcessing) {
-                        console.log('Request timed out, resetting processing state');
+                        console.log('TIMEOUT: No response from server');
                         hideProgress();
-                        appendMessage('System', 'Request timed out. You can try sending your message again.');
+                        appendMessage('System', '⏰ Request timed out. You can try sending your message again.');
                     }
                 }, 30000); // 30 second timeout
             } catch (error) {
-                console.error('Failed to send message:', error);
+                console.error('❌ WebSocket send failed:', error);
                 hideProgress();
-                appendMessage('System', 'Failed to send message: ' + error.message);
+                appendMessage('System', '❌ Failed to send message: ' + error.message);
             }
+            console.log('=== SEND MESSAGE END ===');
         }
 
         // Show progress bar
