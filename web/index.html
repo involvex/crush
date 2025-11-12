@@ -30,6 +30,33 @@
             flex-shrink: 0;
         }
 
+        /* Connection Status */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            z-index: 1000;
+        }
+
+        #connection-status.connected {
+            background-color: #50fa7b;
+            color: #282a36;
+        }
+
+        #connection-status.disconnected {
+            background-color: #ff5555;
+            color: #f8f8f2;
+        }
+
+        #connection-status.connecting {
+            background-color: #ffb86c;
+            color: #282a36;
+        }
+
         .status-item {
             padding: 2px 8px;
             border-radius: 3px;
@@ -456,6 +483,9 @@
         </div>
     </div>
 
+    <!-- Connection Status -->
+    <div id="connection-status" class="connecting">CONNECTING</div>
+
     <!-- Progress Bar -->
     <div id="progress-container">
         <div id="progress-bar"></div>
@@ -624,14 +654,23 @@
         const statusCwd = document.getElementById('status-cwd');
         const statusCpu = document.getElementById('status-cpu');
         const statusMem = document.getElementById('status-mem');
+        const connectionStatus = document.getElementById('connection-status');
+
+        // Update connection status indicator
+        function updateConnectionStatus(status, text) {
+            connectionStatus.className = status;
+            connectionStatus.textContent = text;
+        }
 
         // Initialize WebSocket connection
         function initWebSocket() {
             console.log('Attempting to connect to WebSocket at:', 'ws://' + window.location.host + '/ws');
+            updateConnectionStatus('connecting', 'CONNECTING');
             ws = new WebSocket('ws://' + window.location.host + '/ws');
 
             ws.onopen = () => {
                 console.log('WebSocket connected successfully');
+                updateConnectionStatus('connected', 'CONNECTED');
                 appendMessage('System', 'WebSocket connected');
             };
 
@@ -647,6 +686,7 @@
 
             ws.onclose = (event) => {
                 console.log('WebSocket disconnected, code:', event.code, 'reason:', event.reason);
+                updateConnectionStatus('disconnected', 'DISCONNECTED');
                 appendMessage('System', 'Disconnected from Crush AI.');
                 currentSessionId = null;
                 setTimeout(initWebSocket, 1000); // Reconnect after 1 second
@@ -654,6 +694,7 @@
 
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                updateConnectionStatus('disconnected', 'ERROR');
                 appendMessage('System', 'WebSocket error occurred');
             };
         }
