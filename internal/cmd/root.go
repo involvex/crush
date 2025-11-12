@@ -43,6 +43,7 @@ func init() {
 		updateProvidersCmd,
 		logsCmd,
 		schemaCmd,
+		serveCmd,
 	)
 }
 
@@ -162,6 +163,51 @@ func setupAppWithProgressBar(cmd *cobra.Command) (*app.App, error) {
 // setupApp handles the common setup logic for both interactive and non-interactive modes.
 // It returns the app instance, config, cleanup function, and any error.
 func setupApp(cmd *cobra.Command) (*app.App, error) {
+	debug, _ := cmd.Flags().GetBool("debug")
+	yolo, _ := cmd.Flags().GetBool("yolo")
+	dataDir, _ := cmd.Flags().GetString("data-dir")
+	ctx := cmd.Context()
+
+	cwd, err := ResolveCwd(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := config.Init(cwd, dataDir, debug)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.Permissions == nil {
+		cfg.Permissions = &config.Permissions{}
+	}
+	cfg.Permissions.SkipRequests = yolo
+
+	if err := createDotCrushDir(cfg.Options.DataDirectory); err != nil {
+		return nil, err
+	}
+
+	// Connect to DB; this will also run migrations.
+	conn, err := db.Connect(ctx, cfg.Options.DataDirectory)
+	if err != nil {
+		return nil, err
+	}
+
+	appInstance, err := app.New(ctx, conn, cfg)
+	if err != nil {
+		slog.Error("Failed to create app instance", "error", err)
+		return nil, err
+	}
+
+	if shouldEnableMetrics() {
+		event.Init()
+	}
+
+	return appInstance, nil
+}
+
+// setupAppOnly handles the common setup logic for the app instance without starting the TUI.
+func setupAppOnly(cmd *cobra.Command) (*app.App, error) {
 	debug, _ := cmd.Flags().GetBool("debug")
 	yolo, _ := cmd.Flags().GetBool("yolo")
 	dataDir, _ := cmd.Flags().GetString("data-dir")

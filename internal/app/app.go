@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -114,6 +115,20 @@ func New(ctx context.Context, conn *sql.DB, cfg *config.Config) (*App, error) {
 // Config returns the application configuration.
 func (app *App) Config() *config.Config {
 	return app.config
+}
+
+func (app *App) Chdir(path string) error {
+	// if path is relative, make it absolute
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(app.config.WorkingDir(), path)
+	}
+
+	err := os.Chdir(path)
+	if err != nil {
+		return err
+	}
+	app.config.SetWorkingDir(path)
+	return nil
 }
 
 // RunNonInteractive runs the application in non-interactive mode with the

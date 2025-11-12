@@ -338,6 +338,10 @@ func (c *Config) WorkingDir() string {
 	return c.workingDir
 }
 
+func (c *Config) SetWorkingDir(dir string) {
+	c.workingDir = dir
+}
+
 func (c *Config) EnabledProviders() []ProviderConfig {
 	var enabled []ProviderConfig
 	for p := range c.Providers.Seq() {
