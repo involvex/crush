@@ -622,19 +622,26 @@
 
         // Initialize WebSocket connection
         function initWebSocket() {
+            console.log('Attempting to connect to WebSocket at:', 'ws://' + window.location.host + '/ws');
             ws = new WebSocket('ws://' + window.location.host + '/ws');
 
             ws.onopen = () => {
-                console.log('WebSocket connected');
+                console.log('WebSocket connected successfully');
+                appendMessage('System', 'WebSocket connected');
             };
 
             ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                handleWebSocketMessage(data);
+                console.log('Raw WebSocket message received:', event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                } catch (e) {
+                    console.error('Failed to parse WebSocket message:', e, event.data);
+                }
             };
 
-            ws.onclose = () => {
-                console.log('WebSocket disconnected');
+            ws.onclose = (event) => {
+                console.log('WebSocket disconnected, code:', event.code, 'reason:', event.reason);
                 appendMessage('System', 'Disconnected from Crush AI.');
                 currentSessionId = null;
                 setTimeout(initWebSocket, 1000); // Reconnect after 1 second
@@ -642,7 +649,7 @@
 
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
-                appendMessage('System', 'WebSocket error: ' + error.message);
+                appendMessage('System', 'WebSocket error occurred');
             };
         }
 
