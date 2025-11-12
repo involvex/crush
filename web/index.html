@@ -648,6 +648,7 @@
 
         // Handle WebSocket messages
         function handleWebSocketMessage(data) {
+            console.log('Received WebSocket message:', data);
             switch (data.type) {
                 case 'system':
                     if (data.sessionId) {
@@ -660,10 +661,12 @@
                     updateStatus(data);
                     break;
                 case 'chat':
+                    console.log('Received chat message, hiding progress');
                     appendMessage(data.sender, data.content);
                     hideProgress();
                     break;
                 case 'error':
+                    console.log('Received error message, hiding progress');
                     appendMessage(data.sender, data.content);
                     hideProgress();
                     break;
@@ -683,6 +686,7 @@
                     renderSessionsList();
                     break;
                 default:
+                    console.log('Unknown message type:', data.type);
                     appendMessage(data.sender || 'Unknown', data.content || JSON.stringify(data));
             }
         }
@@ -713,8 +717,12 @@
         // Send message
         function sendMessage() {
             const content = messageInput.value.trim();
-            if (content === '' || isProcessing) return;
+            if (content === '' || isProcessing) {
+                console.log('Cannot send message: content empty or processing', { content, isProcessing });
+                return;
+            }
 
+            console.log('Sending message:', content);
             appendMessage('You', content);
             showProgress();
 
@@ -725,20 +733,25 @@
                 messageToSend = { type: 'message', content: content, sessionId: currentSessionId };
             }
 
+            console.log('Message to send:', messageToSend);
+
             try {
                 ws.send(JSON.stringify(messageToSend));
                 messageInput.value = '';
                 hideCompletions();
                 isProcessing = true;
+                console.log('Message sent, isProcessing set to true');
 
                 // Set a timeout to reset processing state if no response
                 setTimeout(() => {
                     if (isProcessing) {
+                        console.log('Request timed out, resetting processing state');
                         hideProgress();
                         appendMessage('System', 'Request timed out. You can try sending your message again.');
                     }
                 }, 30000); // 30 second timeout
             } catch (error) {
+                console.error('Failed to send message:', error);
                 hideProgress();
                 appendMessage('System', 'Failed to send message: ' + error.message);
             }

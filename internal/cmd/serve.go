@@ -338,10 +338,12 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 
 	switch clientMsg.Type {
 	case "message":
-		// Subscribe to messages from the app
-		messageEvents := appInstance.Messages.Subscribe(context.Background())
-
+		// Handle message processing in a separate goroutine
 		go func() {
+			// Subscribe to messages from the app
+			messageEvents := appInstance.Messages.Subscribe(context.Background())
+
+			// Run the agent coordinator
 			_, err := appInstance.AgentCoordinator.Run(context.Background(), sess.ID, clientMsg.Content)
 			if err != nil {
 				slog.Error("AgentCoordinator.Run failed", "error", err)
@@ -356,35 +358,38 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 					Content: fmt.Sprintf("AI Error: %v", err),
 				}
 				sendResponse(clientMessageChan, errorResponse)
+				return
 			}
-			// After AI response, send HUD update for tokens
-			sendHUDUpdate()
-		}()
 
-		// Stream messages back to the client
-		for {
-			select {
-			case event := <-messageEvents:
-				msg := event.Payload
-				if msg.SessionID == sess.ID && msg.Role == message.Assistant && len(msg.Parts) > 0 {
-					content := msg.Content().String()
-					// TODO: Handle delta updates
-					chatResponse := struct {
-						Type    string `json:"type"`
-						Sender  string `json:"sender"`
-						Content string `json:"content"`
-					}{
-						Type:    "chat",
-						Sender:  "AI",
-						Content: content,
+			// Stream messages back to the client
+			for {
+				select {
+				case event := <-messageEvents:
+					msg := event.Payload
+					if msg.SessionID == sess.ID && msg.Role == message.Assistant && len(msg.Parts) > 0 {
+						content := msg.Content().String()
+						// TODO: Handle delta updates
+						chatResponse := struct {
+							Type    string `json:"type"`
+							Sender  string `json:"sender"`
+							Content string `json:"content"`
+						}{
+							Type:    "chat",
+							Sender:  "AI",
+							Content: content,
+						}
+						sendResponse(clientMessageChan, chatResponse)
 					}
-					sendResponse(clientMessageChan, chatResponse)
+				case <-time.After(30 * time.Second): // Timeout after 30 seconds of no messages
+					// Send HUD update for tokens after response is complete
+					sendHUDUpdate()
+					return
+				case <-ctx.Done(): // Client disconnected
+					slog.Info("Client disconnected during AI response streaming")
+					return
 				}
-			case <-ctx.Done(): // Client disconnected
-				slog.Info("Client disconnected during AI response streaming")
-				return // Exit goroutine
 			}
-		}
+		}()
 	case "command":
 		// Parse the command from content (e.g., "/cd /tmp" -> command="/cd", args=["/tmp"])
 		parts := strings.Split(strings.TrimSpace(clientMsg.Content), " ")
