@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/crush/internal/app"
+	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/message"
-	"github.com/charmbracelet/crush/internal/session"
 	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 )
@@ -36,7 +36,7 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the web server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		appInstance, err := setupAppOnly(cmd)
+		appInstance, err := SetupAppOnly(cmd)
 		if err != nil {
 			return err
 		}
@@ -102,7 +102,7 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 	// Reader Goroutine
 	go func() {
 		for {
-			messageType, p, err := conn.ReadMessage()
+			_, p, err := conn.ReadMessage()
 			if err != nil {
 				slog.Error("Failed to read WebSocket message", "error", err)
 				return // Exit reader goroutine
@@ -144,7 +144,8 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 	Content string   `json:"content"`
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
-}, clientMessageChan chan<- []byte, ctx context.Context) {
+}, clientMessageChan chan<- []byte, ctx context.Context,
+) {
 	var serverResponse struct {
 		Type    string `json:"type"`
 		Sender  string `json:"sender"`
@@ -229,6 +230,42 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 					serverResponse.Type = "info"
 					serverResponse.Sender = "System"
 					serverResponse.Content = fmt.Sprintf("Directory changed to %s", newCwd)
+				}
+			}
+		case "/help":
+			serverResponse.Type = "info"
+			serverResponse.Sender = "System"
+			serverResponse.Content = "Available commands: /cd <path>, /help, /model"
+		case "/model":
+			if len(clientMsg.Args) == 0 {
+				// List available models
+				models := appInstance.Config().Models
+				modelList := "Available models:\n"
+				for _, model := range models {
+					modelList += fmt.Sprintf("- %s (Provider: %s)\n", model.Model, model.Provider)
+				}
+				serverResponse.Type = "info"
+				serverResponse.Sender = "System"
+				serverResponse.Content = modelList
+			} else {
+				// Try to set preferred model
+				modelName := clientMsg.Args[0]
+				selectedModel, ok := appInstance.Config().Models[config.SelectedModelType(modelName)]
+				if !ok {
+					serverResponse.Type = "error"
+					serverResponse.Sender = "System"
+					serverResponse.Content = fmt.Sprintf("Error: Model '%s' not found.", modelName)
+				} else {
+					err := appInstance.Config().UpdatePreferredModel(appInstance.Config().Agents["coder"].Model, selectedModel)
+					if err != nil {
+						serverResponse.Type = "error"
+						serverResponse.Sender = "System"
+						serverResponse.Content = fmt.Sprintf("Error setting preferred model: %v", err)
+					} else {
+						serverResponse.Type = "info"
+						serverResponse.Sender = "System"
+						serverResponse.Content = fmt.Sprintf("Preferred model set to %s", modelName)
+					}
 				}
 			}
 		default:

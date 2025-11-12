@@ -206,8 +206,8 @@ func setupApp(cmd *cobra.Command) (*app.App, error) {
 	return appInstance, nil
 }
 
-// setupAppOnly handles the common setup logic for the app instance without starting the TUI.
-func setupAppOnly(cmd *cobra.Command) (*app.App, error) {
+// SetupAppOnly handles the common setup logic for the app instance without starting the TUI.
+func SetupAppOnly(cmd *cobra.Command) (*app.App, error) {
 	debug, _ := cmd.Flags().GetBool("debug")
 	yolo, _ := cmd.Flags().GetBool("yolo")
 	dataDir, _ := cmd.Flags().GetString("data-dir")

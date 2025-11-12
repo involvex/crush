@@ -51,6 +51,20 @@ func TestYourFunction(t *testing.T) {
 }
 ```
 
+## Further Improvements
+
+1.  **Session Management:** Implement persistent conversation context.
+2.  **Streaming AI Responses:** Enable real-time, token-by-token AI output.
+3.  **More Commands:** Expand web UI functionality (e.g., `/ls`, `/read`, `/write`).
+4.  **Interactive Model Selection:** Implement a dropdown or buttons for model selection in the frontend.
+5.  **Error Handling:** Enhance web UI feedback for errors.
+6.  **User Authentication:** Secure web UI access.
+7.  **Styling & Responsiveness:** Improve visual appeal and adaptability.
+8.  **Frontend Framework:** Consider React/Vue/Angular for complex features.
+9.  **LSP Integration:** Add code intelligence to the web UI.
+10. **File System Browser:** Enable easy file navigation.
+11. **Configuration Options:** Allow web server settings customization.
+
 ## Formatting
 
 - ALWAYS format any Go code you write.
