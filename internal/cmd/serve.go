@@ -9,19 +9,23 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/charmbracelet/crush/internal/app"
 	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/message"
+	"github.com/charmbracelet/crush/internal/session"
 	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 )
 
 var (
-	hostname string
-	port     int
+	hostname          string
+	port              int
+	activeWebSessions = make(map[string]*session.Session)
+	sessionMutex      sync.Mutex
 )
 
 var upgrader = websocket.Upgrader{
@@ -96,6 +100,42 @@ var serveCmd = &cobra.Command{
 }
 
 func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx context.Context) {
+	// Create a new app session for this web session
+	sess, err := appInstance.Sessions.Create(context.Background(), "Web Chat Session")
+	if err != nil {
+		slog.Error("Failed to create app session for web client", "error", err)
+		return
+	}
+	webSessionID := sess.ID
+
+	sessionMutex.Lock()
+	activeWebSessions[webSessionID] = &sess
+	sessionMutex.Unlock()
+
+	defer func() {
+		sessionMutex.Lock()
+		delete(activeWebSessions, webSessionID)
+		sessionMutex.Unlock()
+		slog.Info("Web session removed", "webSessionID", webSessionID)
+	}()
+
+	// Send the session ID to the client
+	initialMessage := struct {
+		Type      string `json:"type"`
+		Sender    string `json:"sender"`
+		Content   string `json:"content"`
+		SessionID string `json:"sessionId"`
+	}{
+		Type:      "system",
+		Sender:    "System",
+		Content:   "Connected to Crush AI. Type /help for commands.",
+		SessionID: webSessionID,
+	}
+	if err := conn.WriteJSON(initialMessage); err != nil {
+		slog.Error("Failed to send initial message with session ID", "error", err)
+		return
+	}
+
 	// Channel to send messages to the client
 	clientMessageChan := make(chan []byte, 10)
 
@@ -109,10 +149,11 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 			}
 
 			var clientMsg struct {
-				Type    string   `json:"type"`
-				Content string   `json:"content"`
-				Command string   `json:"command"`
-				Args    []string `json:"args"`
+				Type      string   `json:"type"`
+				Content   string   `json:"content"`
+				Command   string   `json:"command"`
+				Args      []string `json:"args"`
+				SessionID string   `json:"sessionId"` // Added SessionID field
 			}
 			if err := json.Unmarshal(p, &clientMsg); err != nil {
 				slog.Error("Failed to unmarshal client message", "error", err)
@@ -140,10 +181,11 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 }
 
 func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg struct {
-	Type    string   `json:"type"`
-	Content string   `json:"content"`
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
+	Type      string   `json:"type"`
+	Content   string   `json:"content"`
+	Command   string   `json:"command"`
+	Args      []string `json:"args"`
+	SessionID string   `json:"sessionId"` // Added SessionID field
 }, clientMessageChan chan<- []byte, ctx context.Context,
 ) {
 	var serverResponse struct {
@@ -152,20 +194,22 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 		Content string `json:"content"`
 	}
 
+	// Retrieve session based on clientMsg.SessionID
+	sessionMutex.Lock()
+	sess, ok := activeWebSessions[clientMsg.SessionID]
+	sessionMutex.Unlock()
+
+	if !ok {
+		slog.Error("Web session not found", "webSessionID", clientMsg.SessionID)
+		serverResponse.Type = "error"
+		serverResponse.Sender = "System"
+		serverResponse.Content = "Error: Web session not found. Please refresh."
+		sendResponse(clientMessageChan, serverResponse)
+		return
+	}
+
 	switch clientMsg.Type {
 	case "message":
-		// Create a new session for each chat message for now.
-		// TODO: Implement session management for web.
-		sess, err := appInstance.Sessions.Create(context.Background(), "Web Chat Session")
-		if err != nil {
-			slog.Error("Failed to create session", "error", err)
-			serverResponse.Type = "error"
-			serverResponse.Sender = "System"
-			serverResponse.Content = fmt.Sprintf("Error creating session: %v", err)
-			sendResponse(clientMessageChan, serverResponse)
-			return
-		}
-
 		// Subscribe to messages from the app
 		messageEvents := appInstance.Messages.Subscribe(context.Background())
 
@@ -238,11 +282,17 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 			serverResponse.Content = "Available commands: /cd <path>, /help, /model"
 		case "/model":
 			if len(clientMsg.Args) == 0 {
-				// List available models
-				models := appInstance.Config().Models
+				// List all available models from all providers
 				modelList := "Available models:\n"
-				for _, model := range models {
-					modelList += fmt.Sprintf("- %s (Provider: %s)\n", model.Model, model.Provider)
+				uniqueModels := make(map[string]struct{}) // To store unique model names
+				for p := range appInstance.Config().Providers.Seq() {
+					for _, model := range p.Models {
+						modelIdentifier := fmt.Sprintf("%s (Provider: %s)", model.ID, p.ID)
+						if _, exists := uniqueModels[modelIdentifier]; !exists {
+							modelList += fmt.Sprintf("- %s\n", modelIdentifier)
+							uniqueModels[modelIdentifier] = struct{}{}
+						}
+					}
 				}
 				serverResponse.Type = "info"
 				serverResponse.Sender = "System"
@@ -250,13 +300,32 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 			} else {
 				// Try to set preferred model
 				modelName := clientMsg.Args[0]
-				selectedModel, ok := appInstance.Config().Models[config.SelectedModelType(modelName)]
-				if !ok {
+				// Find the model in all providers
+				var foundModel *config.SelectedModel
+				var foundProviderID string
+				for p := range appInstance.Config().Providers.Seq() {
+					for _, model := range p.Models {
+						if model.ID == modelName {
+							foundModel = &config.SelectedModel{
+								Model:    model.ID,
+								Provider: p.ID,
+							}
+							foundProviderID = p.ID
+							break
+						}
+					}
+					if foundModel != nil {
+						break
+					}
+				}
+
+				if foundModel == nil {
 					serverResponse.Type = "error"
 					serverResponse.Sender = "System"
-					serverResponse.Content = fmt.Sprintf("Error: Model '%s' not found.", modelName)
+					serverResponse.Content = fmt.Sprintf("Error: Model '%s' not found in any provider.", modelName)
 				} else {
-					err := appInstance.Config().UpdatePreferredModel(appInstance.Config().Agents["coder"].Model, selectedModel)
+					// For simplicity, set the selected model as the new "large" model
+					err := appInstance.Config().UpdatePreferredModel(config.SelectedModelTypeLarge, *foundModel)
 					if err != nil {
 						serverResponse.Type = "error"
 						serverResponse.Sender = "System"
@@ -264,7 +333,7 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 					} else {
 						serverResponse.Type = "info"
 						serverResponse.Sender = "System"
-						serverResponse.Content = fmt.Sprintf("Preferred model set to %s", modelName)
+						serverResponse.Content = fmt.Sprintf("Preferred model set to %s (Provider: %s)", foundModel.Model, foundProviderID)
 					}
 				}
 			}

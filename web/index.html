@@ -91,19 +91,27 @@
         const sendButton = document.getElementById('send-button');
         const ws = new WebSocket('ws://' + window.location.host + '/ws');
 
+        let currentSessionId = null;
+
         ws.onopen = () => {
             console.log('WebSocket connected');
-            appendMessage('System', 'Connected to Crush AI. Type /help for commands.');
+            // Initial message is now sent from the backend with session ID
         };
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            appendMessage(data.sender, data.content);
+            if (data.type === 'system' && data.sessionId) {
+                currentSessionId = data.sessionId;
+                appendMessage(data.sender, data.content);
+            } else {
+                appendMessage(data.sender, data.content);
+            }
         };
 
         ws.onclose = () => {
             console.log('WebSocket disconnected');
             appendMessage('System', 'Disconnected from Crush AI.');
+            currentSessionId = null;
         };
 
         ws.onerror = (error) => {
@@ -129,9 +137,9 @@
                 const parts = content.split(' ');
                 const command = parts[0];
                 const args = parts.slice(1);
-                messageToSend = { type: 'command', command: command, args: args };
+                messageToSend = { type: 'command', command: command, args: args, sessionId: currentSessionId };
             } else {
-                messageToSend = { type: 'message', content: content };
+                messageToSend = { type: 'message', content: content, sessionId: currentSessionId };
             }
 
             ws.send(JSON.stringify(messageToSend));
