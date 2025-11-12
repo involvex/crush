@@ -723,9 +723,25 @@
 
         // Send message
         function sendMessage() {
+            console.log('sendMessage() called');
             const content = messageInput.value.trim();
-            if (content === '' || isProcessing) {
-                console.log('Cannot send message: content empty or processing', { content, isProcessing });
+            console.log('Content:', content, 'isProcessing:', isProcessing, 'currentSessionId:', currentSessionId);
+
+            if (content === '') {
+                console.log('Cannot send: content is empty');
+                appendMessage('System', 'Cannot send empty message');
+                return;
+            }
+
+            if (isProcessing) {
+                console.log('Cannot send: already processing');
+                appendMessage('System', 'Please wait for the previous message to complete');
+                return;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                console.log('Cannot send: WebSocket not connected', ws ? ws.readyState : 'no ws');
+                appendMessage('System', 'WebSocket not connected. Please refresh the page.');
                 return;
             }
 
@@ -747,7 +763,7 @@
                 messageInput.value = '';
                 hideCompletions();
                 isProcessing = true;
-                console.log('Message sent, isProcessing set to true');
+                console.log('Message sent successfully, isProcessing set to true');
 
                 // Set a timeout to reset processing state if no response
                 setTimeout(() => {
