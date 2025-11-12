@@ -91,6 +91,8 @@
         #hud-model { color: #ffb86c; } /* Dracula orange */
         #hud-cwd { color: #50fa7b; } /* Dracula green */
         #hud-tokens { color: #bd93f9; } /* Dracula purple */
+        #hud-cpu { color: #ff79c6; } /* Dracula pink */
+        #hud-mem { color: #f1fa8c; } /* Dracula yellow */
     </style>
 </head>
 <body>
@@ -98,6 +100,8 @@
         <div id="hud-model">Model: N/A</div>
         <div id="hud-cwd">CWD: N/A</div>
         <div id="hud-tokens">Tokens: P:0 C:0 T:0</div>
+        <div id="hud-cpu">CPU: N/A</div>
+        <div id="hud-mem">Mem: N/A</div>
     </div>
     <div id="chat-container">
         <div id="messages"></div>
@@ -114,6 +118,8 @@
         const hudModelDiv = document.getElementById('hud-model');
         const hudCwdDiv = document.getElementById('hud-cwd');
         const hudTokensDiv = document.getElementById('hud-tokens');
+        const hudCpuDiv = document.getElementById('hud-cpu');
+        const hudMemDiv = document.getElementById('hud-mem');
         const ws = new WebSocket('ws://' + window.location.host + '/ws');
 
         let currentSessionId = null;
@@ -227,6 +233,12 @@
             }
             if (data.promptTokens !== undefined && data.completionTokens !== undefined && data.totalTokens !== undefined) {
                 hudTokensDiv.textContent = `Tokens: P:${data.promptTokens} C:${data.completionTokens} T:${data.totalTokens}`;
+            }
+            if (data.cpuUsage !== undefined) {
+                hudCpuDiv.textContent = `CPU: ${data.cpuUsage.toFixed(1)}%`;
+            }
+            if (data.memUsedMB !== undefined && data.memTotalMB !== undefined) {
+                hudMemDiv.textContent = `Mem: ${data.memUsedMB}MB / ${data.memTotalMB}MB (${data.memUsage.toFixed(1)}%)`;
             }
         }
     </script>

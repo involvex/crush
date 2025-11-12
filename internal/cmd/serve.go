@@ -18,8 +18,45 @@ import (
 	"github.com/charmbracelet/crush/internal/message"
 	"github.com/charmbracelet/crush/internal/session"
 	"github.com/gorilla/websocket"
+	"github.com/shirou/gopsutil/v3/cpu" // Added gopsutil import
+	"github.com/shirou/gopsutil/v3/mem" // Added gopsutil import
 	"github.com/spf13/cobra"
 )
+
+// SystemMetrics holds the collected system usage data.
+type SystemMetrics struct {
+	CPUUsage   float64 `json:"cpuUsage"`
+	MemUsedMB  uint64  `json:"memUsedMB"`
+	MemTotalMB uint64  `json:"memTotalMB"`
+	MemUsage   float64 `json:"memUsage"`
+}
+
+// GetSystemMetrics collects CPU and memory usage.
+func GetSystemMetrics() (SystemMetrics, error) {
+	var metrics SystemMetrics
+
+	// Get CPU usage
+	cpuPercentages, err := cpu.Percent(time.Second, false)
+	if err != nil {
+		slog.Error("Error getting CPU percent", "error", err)
+		return metrics, err
+	}
+	if len(cpuPercentages) > 0 {
+		metrics.CPUUsage = cpuPercentages[0]
+	}
+
+	// Get memory usage
+	v, err := mem.VirtualMemory()
+	if err != nil {
+		slog.Error("Error getting virtual memory", "error", err)
+		return metrics, err
+	}
+	metrics.MemTotalMB = v.Total / 1024 / 1024
+	metrics.MemUsedMB = v.Used / 1024 / 1024
+	metrics.MemUsage = v.UsedPercent
+
+	return metrics, nil
+}
 
 var (
 	hostname          string
@@ -125,12 +162,16 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 
 	// Send the session ID and initial HUD data to the client
 	initialMessage := struct {
-		Type         string `json:"type"`
-		Sender       string `json:"sender"`
-		Content      string `json:"content"`
-		SessionID    string `json:"sessionId"`
-		CurrentModel string `json:"currentModel"`
-		CWD          string `json:"cwd"`
+		Type         string  `json:"type"`
+		Sender       string  `json:"sender"`
+		Content      string  `json:"content"`
+		SessionID    string  `json:"sessionId"`
+		CurrentModel string  `json:"currentModel"`
+		CWD          string  `json:"cwd"`
+		CPUUsage     float64 `json:"cpuUsage"`
+		MemUsedMB    uint64  `json:"memUsedMB"`
+		MemTotalMB   uint64  `json:"memTotalMB"`
+		MemUsage     float64 `json:"memUsage"`
 	}{
 		Type:         "system",
 		Sender:       "System",
@@ -139,6 +180,16 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 		CurrentModel: currentModel,
 		CWD:          cwd,
 	}
+
+	// Get initial system metrics
+	sysMetrics, err := GetSystemMetrics()
+	if err == nil {
+		initialMessage.CPUUsage = sysMetrics.CPUUsage
+		initialMessage.MemUsedMB = sysMetrics.MemUsedMB
+		initialMessage.MemTotalMB = sysMetrics.MemTotalMB
+		initialMessage.MemUsage = sysMetrics.MemUsage
+	}
+
 	if err := conn.WriteJSON(initialMessage); err != nil {
 		slog.Error("Failed to send initial message with session ID and HUD data", "error", err)
 		return
@@ -146,6 +197,38 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 
 	// Channel to send messages to the client
 	clientMessageChan := make(chan []byte, 10)
+
+	// Goroutine to send system metrics periodically
+	go func() {
+		ticker := time.NewTicker(5 * time.Second) // Update every 5 seconds
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				sysMetrics, err := GetSystemMetrics()
+				if err != nil {
+					slog.Error("Failed to get system metrics for HUD update", "error", err)
+					continue
+				}
+				hud := HUDUpdate{
+					Type:             "hudUpdate",
+					CurrentModel:     appInstance.Config().Models[config.SelectedModelTypeLarge].Model,
+					CWD:              cwd, // CWD doesn't change unless /cd is used, but sending it for consistency
+					PromptTokens:     sess.PromptTokens,
+					CompletionTokens: sess.CompletionTokens,
+					TotalTokens:      sess.PromptTokens + sess.CompletionTokens,
+					CPUUsage:         sysMetrics.CPUUsage,
+					MemUsedMB:        sysMetrics.MemUsedMB,
+					MemTotalMB:       sysMetrics.MemTotalMB,
+					MemUsage:         sysMetrics.MemUsage,
+				}
+				sendResponse(clientMessageChan, hud)
+			case <-ctx.Done():
+				slog.Info("System metrics goroutine stopped for client", "webSessionID", webSessionID)
+				return
+			}
+		}
+	}()
 
 	// Reader Goroutine
 	go func() {
@@ -189,12 +272,16 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 }
 
 type HUDUpdate struct {
-	Type             string `json:"type"`
-	CurrentModel     string `json:"currentModel"`
-	CWD              string `json:"cwd"`
-	PromptTokens     int64  `json:"promptTokens"`
-	CompletionTokens int64  `json:"completionTokens"`
-	TotalTokens      int64  `json:"totalTokens"`
+	Type             string  `json:"type"`
+	CurrentModel     string  `json:"currentModel"`
+	CWD              string  `json:"cwd"`
+	PromptTokens     int64   `json:"promptTokens"`
+	CompletionTokens int64   `json:"completionTokens"`
+	TotalTokens      int64   `json:"totalTokens"`
+	CPUUsage         float64 `json:"cpuUsage"`
+	MemUsedMB        uint64  `json:"memUsedMB"`
+	MemTotalMB       uint64  `json:"memTotalMB"`
+	MemUsage         float64 `json:"memUsage"`
 }
 
 func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg struct {
@@ -229,6 +316,11 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 	sendHUDUpdate := func() {
 		currentModel := appInstance.Config().Models[config.SelectedModelTypeLarge].Model
 		cwd, _ := os.Getwd()
+		sysMetrics, err := GetSystemMetrics()
+		if err != nil {
+			slog.Error("Failed to get system metrics for HUD update", "error", err)
+			// Continue without system metrics if there's an error
+		}
 		hud := HUDUpdate{
 			Type:             "hudUpdate",
 			CurrentModel:     currentModel,
@@ -236,6 +328,10 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 			PromptTokens:     sess.PromptTokens,
 			CompletionTokens: sess.CompletionTokens,
 			TotalTokens:      sess.PromptTokens + sess.CompletionTokens,
+			CPUUsage:         sysMetrics.CPUUsage,
+			MemUsedMB:        sysMetrics.MemUsedMB,
+			MemTotalMB:       sysMetrics.MemTotalMB,
+			MemUsage:         sysMetrics.MemUsage,
 		}
 		sendResponse(clientMessageChan, hud)
 	}
