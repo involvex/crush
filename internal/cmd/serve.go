@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -240,11 +241,9 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 			}
 
 			var clientMsg struct {
-				Type      string   `json:"type"`
-				Content   string   `json:"content"`
-				Command   string   `json:"command"`
-				Args      []string `json:"args"`
-				SessionID string   `json:"sessionId"` // Added SessionID field
+				Type      string `json:"type"`
+				Content   string `json:"content"`
+				SessionID string `json:"sessionId"`
 			}
 			if err := json.Unmarshal(p, &clientMsg); err != nil {
 				slog.Error("Failed to unmarshal client message", "error", err)
@@ -285,11 +284,9 @@ type HUDUpdate struct {
 }
 
 func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg struct {
-	Type      string   `json:"type"`
-	Content   string   `json:"content"`
-	Command   string   `json:"command"`
-	Args      []string `json:"args"`
-	SessionID string   `json:"sessionId"` // Added SessionID field
+	Type      string `json:"type"`
+	Content   string `json:"content"`
+	SessionID string `json:"sessionId"`
 }, clientMessageChan chan<- []byte, ctx context.Context,
 ) {
 	var serverResponse struct {
@@ -386,14 +383,27 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 			}
 		}
 	case "command":
-		switch clientMsg.Command {
+		// Parse the command from content (e.g., "/cd /tmp" -> command="/cd", args=["/tmp"])
+		parts := strings.Split(strings.TrimSpace(clientMsg.Content), " ")
+		if len(parts) == 0 {
+			serverResponse.Type = "error"
+			serverResponse.Sender = "System"
+			serverResponse.Content = "Error: Empty command"
+			sendResponse(clientMessageChan, serverResponse)
+			return
+		}
+
+		command := parts[0]
+		args := parts[1:]
+
+		switch command {
 		case "/cd":
-			if len(clientMsg.Args) == 0 {
+			if len(args) == 0 {
 				serverResponse.Type = "error"
 				serverResponse.Sender = "System"
 				serverResponse.Content = "Error: path is required for /cd command."
 			} else {
-				path := clientMsg.Args[0]
+				path := args[0]
 				err := appInstance.Chdir(path)
 				if err != nil {
 					serverResponse.Type = "error"
@@ -412,7 +422,7 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 			serverResponse.Sender = "System"
 			serverResponse.Content = "Available commands: /cd <path>, /help, /model"
 		case "/model":
-			if len(clientMsg.Args) == 0 {
+			if len(args) == 0 {
 				// List all available models from all providers
 				modelList := "Available models:\n"
 				uniqueModels := make(map[string]struct{}) // To store unique model names
@@ -430,7 +440,7 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 				serverResponse.Content = modelList
 			} else {
 				// Try to set preferred model
-				modelName := clientMsg.Args[0]
+				modelName := args[0]
 				// Find the model in all providers
 				var foundModel *config.SelectedModel
 				var foundProviderID string
@@ -472,9 +482,220 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 		default:
 			serverResponse.Type = "error"
 			serverResponse.Sender = "System"
-			serverResponse.Content = fmt.Sprintf("Error: Unknown command '%s'", clientMsg.Command)
+			serverResponse.Content = fmt.Sprintf("Error: Unknown command '%s'", command)
 		}
 		sendResponse(clientMessageChan, serverResponse)
+	case "get_commands":
+		// Send available commands
+		commandsResponse := struct {
+			Type     string `json:"type"`
+			Commands []struct {
+				ID          string `json:"id"`
+				Title       string `json:"title"`
+				Description string `json:"description"`
+				Type        string `json:"type"`
+			} `json:"commands"`
+		}{
+			Type: "commands",
+			Commands: []struct {
+				ID          string `json:"id"`
+				Title       string `json:"title"`
+				Description string `json:"description"`
+				Type        string `json:"type"`
+			}{
+				{ID: "new_session", Title: "New Session", Description: "Start a new session", Type: "system"},
+				{ID: "switch_session", Title: "Switch Session", Description: "Switch to a different session", Type: "system"},
+				{ID: "switch_model", Title: "Switch Model", Description: "Switch to a different model", Type: "system"},
+				{ID: "summarize", Title: "Summarize Session", Description: "Summarize the current session", Type: "system"},
+				{ID: "file_picker", Title: "Open File Picker", Description: "Open file picker", Type: "system"},
+				{ID: "toggle_help", Title: "Toggle Help", Description: "Toggle help", Type: "system"},
+				{ID: "quit", Title: "Quit", Description: "Quit application", Type: "system"},
+			},
+		}
+		sendResponse(clientMessageChan, commandsResponse)
+	case "get_models":
+		// Send available models
+		modelsResponse := struct {
+			Type   string `json:"type"`
+			Models []struct {
+				ID       string `json:"id"`
+				Name     string `json:"name"`
+				Provider string `json:"provider"`
+			} `json:"models"`
+		}{
+			Type: "models",
+			Models: []struct {
+				ID       string `json:"id"`
+				Name     string `json:"name"`
+				Provider string `json:"provider"`
+			}{},
+		}
+
+		for p := range appInstance.Config().Providers.Seq() {
+			for _, model := range p.Models {
+				modelsResponse.Models = append(modelsResponse.Models, struct {
+					ID       string `json:"id"`
+					Name     string `json:"name"`
+					Provider string `json:"provider"`
+				}{
+					ID:       model.ID,
+					Name:     model.ID,
+					Provider: p.ID,
+				})
+			}
+		}
+		sendResponse(clientMessageChan, modelsResponse)
+	case "get_sessions":
+		// Send available sessions
+		allSessions, err := appInstance.Sessions.List(context.Background())
+		sessionsResponse := struct {
+			Type     string `json:"type"`
+			Sessions []struct {
+				ID        string `json:"id"`
+				Name      string `json:"name"`
+				CreatedAt string `json:"createdAt"`
+			} `json:"sessions"`
+		}{
+			Type: "sessions",
+			Sessions: []struct {
+				ID        string `json:"id"`
+				Name      string `json:"name"`
+				CreatedAt string `json:"createdAt"`
+			}{},
+		}
+
+		if err == nil {
+			for _, session := range allSessions {
+				sessionsResponse.Sessions = append(sessionsResponse.Sessions, struct {
+					ID        string `json:"id"`
+					Name      string `json:"name"`
+					CreatedAt string `json:"createdAt"`
+				}{
+					ID:        session.ID,
+					Name:      session.Title,
+					CreatedAt: time.Unix(session.CreatedAt, 0).Format(time.RFC3339),
+				})
+			}
+		}
+		sendResponse(clientMessageChan, sessionsResponse)
+	case "switch_model":
+		modelId := clientMsg.Content
+		// Find the model in all providers
+		var foundModel *config.SelectedModel
+		for p := range appInstance.Config().Providers.Seq() {
+			for _, model := range p.Models {
+				if model.ID == modelId {
+					foundModel = &config.SelectedModel{
+						Model:    model.ID,
+						Provider: p.ID,
+					}
+					break
+				}
+			}
+			if foundModel != nil {
+				break
+			}
+		}
+
+		if foundModel == nil {
+			serverResponse.Type = "error"
+			serverResponse.Sender = "System"
+			serverResponse.Content = fmt.Sprintf("Error: Model '%s' not found.", modelId)
+		} else {
+			err := appInstance.Config().UpdatePreferredModel(config.SelectedModelTypeLarge, *foundModel)
+			if err != nil {
+				serverResponse.Type = "error"
+				serverResponse.Sender = "System"
+				serverResponse.Content = fmt.Sprintf("Error setting model: %v", err)
+			} else {
+				serverResponse.Type = "info"
+				serverResponse.Sender = "System"
+				serverResponse.Content = fmt.Sprintf("Switched to model: %s", foundModel.Model)
+				sendHUDUpdate()
+			}
+		}
+		sendResponse(clientMessageChan, serverResponse)
+	case "switch_session":
+		// Switch to the target session
+		// For web UI, we just acknowledge the switch - the client handles session state
+		serverResponse.Type = "info"
+		serverResponse.Sender = "System"
+		serverResponse.Content = "Switched to session"
+		sendResponse(clientMessageChan, serverResponse)
+	case "new_session":
+		// Create a new session
+		newSess, err := appInstance.Sessions.Create(context.Background(), "Web Chat Session")
+		if err != nil {
+			serverResponse.Type = "error"
+			serverResponse.Sender = "System"
+			serverResponse.Content = fmt.Sprintf("Error creating session: %v", err)
+		} else {
+			// Add to active sessions
+			sessionMutex.Lock()
+			activeWebSessions[newSess.ID] = &newSess
+			sessionMutex.Unlock()
+
+			serverResponse.Type = "info"
+			serverResponse.Sender = "System"
+			serverResponse.Content = "Created new session"
+		}
+		sendResponse(clientMessageChan, serverResponse)
+	case "execute_command":
+		commandId := clientMsg.Content
+		switch commandId {
+		case "summarize":
+			if sess != nil {
+				err := appInstance.AgentCoordinator.Summarize(context.Background(), sess.ID)
+				if err != nil {
+					serverResponse.Type = "error"
+					serverResponse.Sender = "System"
+					serverResponse.Content = fmt.Sprintf("Error summarizing session: %v", err)
+				} else {
+					serverResponse.Type = "info"
+					serverResponse.Sender = "System"
+					serverResponse.Content = "Session summarized"
+				}
+			}
+		default:
+			serverResponse.Type = "error"
+			serverResponse.Sender = "System"
+			serverResponse.Content = fmt.Sprintf("Unknown command: %s", commandId)
+		}
+		sendResponse(clientMessageChan, serverResponse)
+	case "get_files":
+		path := clientMsg.Content
+		if path == "" {
+			path = "."
+		}
+		// For now, just return a simple file list
+		// In a real implementation, you'd list files from the given path
+		filesResponse := struct {
+			Type  string `json:"type"`
+			Files []struct {
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"files"`
+		}{
+			Type: "files",
+			Files: []struct {
+				Name string `json:"name"`
+				Type string `json:"type"`
+			}{
+				{Name: ".", Type: "directory"},
+				{Name: "..", Type: "directory"},
+				{Name: "example.txt", Type: "file"},
+				{Name: "src", Type: "directory"},
+			},
+		}
+		sendResponse(clientMessageChan, filesResponse)
+	case "quit":
+		// Handle quit
+		serverResponse.Type = "info"
+		serverResponse.Sender = "System"
+		serverResponse.Content = "Goodbye!"
+		sendResponse(clientMessageChan, serverResponse)
+		// Close the connection
+		return
 	default:
 		serverResponse.Type = "error"
 		serverResponse.Sender = "System"

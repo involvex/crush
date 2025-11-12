@@ -3,6 +3,10 @@
 <head>
     <title>Crush Web Interface</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
             margin: 0;
@@ -12,187 +16,745 @@
             height: 100vh;
             background-color: #282a36; /* Dracula background */
             color: #f8f8f2; /* Dracula foreground */
+            overflow: hidden;
         }
+
+        /* HUD/Status Bar */
+        #status-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 10px;
+            background-color: #44475a;
+            border-bottom: 1px solid #6272a4;
+            font-size: 0.85em;
+            flex-shrink: 0;
+        }
+
+        .status-item {
+            padding: 2px 8px;
+            border-radius: 3px;
+            background-color: #282a36;
+            color: #f8f8f2;
+            margin: 0 2px;
+        }
+
+        #status-model { color: #ffb86c; }
+        #status-session { color: #50fa7b; }
+        #status-tokens { color: #bd93f9; }
+        #status-cwd { color: #8be9fd; }
+        #status-cpu { color: #ff79c6; }
+        #status-mem { color: #f1fa8c; }
+
+        /* Main content area */
+        #main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Chat container */
         #chat-container {
-            flex-grow: 1;
+            flex: 1;
             overflow-y: auto;
             padding: 10px;
-            border-bottom: 1px solid #44475a; /* Darker border */
+            background-color: #282a36;
         }
+
+        #messages {
+            max-width: none;
+        }
+
         #messages div {
             margin-bottom: 8px;
             line-height: 1.4;
+            word-wrap: break-word;
         }
+
         #messages strong {
             color: #50fa7b; /* Green for sender */
         }
+
+        /* Input container */
         #input-container {
             display: flex;
             padding: 10px;
-            background-color: #383a59; /* Slightly lighter dark for input area */
+            background-color: #383a59;
+            border-top: 1px solid #44475a;
+            flex-shrink: 0;
         }
+
         #message-input {
-            flex-grow: 1;
+            flex: 1;
             padding: 10px;
-            border: 1px solid #6272a4; /* Dracula comment color for border */
+            border: 1px solid #6272a4;
             border-radius: 4px;
-            background-color: #44475a; /* Darker input background */
-            color: #f8f8f2; /* Light text */
+            background-color: #44475a;
+            color: #f8f8f2;
             font-family: monospace;
             font-size: 1em;
+            resize: none;
+            min-height: 20px;
+            max-height: 200px;
+            overflow-y: auto;
         }
+
         #message-input::placeholder {
-            color: #bd93f9; /* Dracula purple for placeholder */
+            color: #bd93f9;
         }
+
         #send-button {
             margin-left: 10px;
             padding: 10px 20px;
-            background-color: #bd93f9; /* Dracula purple accent */
-            color: #282a36; /* Dark text on button */
+            background-color: #bd93f9;
+            color: #282a36;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-size: 1em;
             font-weight: bold;
+            align-self: flex-end;
         }
+
         #send-button:hover {
-            background-color: #ff79c6; /* Dracula pink on hover */
+            background-color: #ff79c6;
         }
-        .message-button { /* Styling for interactive command/model buttons */
+
+        /* Message buttons */
+        .message-button {
             margin-right: 5px;
             margin-bottom: 5px;
             padding: 5px 10px;
-            background-color: #6272a4; /* Dracula comment color */
-            color: #f8f8f2; /* Light text */
+            background-color: #6272a4;
+            color: #f8f8f2;
             border: 1px solid #44475a;
             border-radius: 3px;
             cursor: pointer;
             font-family: monospace;
             font-size: 0.9em;
         }
+
         .message-button:hover {
-            background-color: #8be9fd; /* Dracula cyan on hover */
+            background-color: #8be9fd;
             color: #282a36;
         }
-        #hud-container {
+
+        /* Modal dialogs */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
             display: flex;
-            justify-content: space-around;
-            padding: 10px;
-            background-color: #44475a; /* Darker background for HUD */
-            border-bottom: 1px solid #6272a4;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background-color: #282a36;
+            border: 1px solid #6272a4;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #44475a;
+        }
+
+        .modal-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #ffb86c;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #ff79c6;
+            font-size: 1.2em;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .modal-close:hover {
+            color: #ff5555;
+        }
+
+        .modal-body {
+            margin-bottom: 15px;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: 1px solid #6272a4;
+            border-radius: 4px;
+            background-color: #44475a;
+            color: #f8f8f2;
+            cursor: pointer;
+            font-family: monospace;
             font-size: 0.9em;
         }
-        #hud-container div {
-            padding: 5px 10px;
-            border-radius: 3px;
-            background-color: #282a36;
+
+        .btn:hover {
+            background-color: #6272a4;
+        }
+
+        .btn-primary {
+            background-color: #bd93f9;
+            color: #282a36;
+        }
+
+        .btn-primary:hover {
+            background-color: #ff79c6;
+        }
+
+        .btn-danger {
+            background-color: #ff5555;
             color: #f8f8f2;
         }
-        #hud-model { color: #ffb86c; } /* Dracula orange */
-        #hud-cwd { color: #50fa7b; } /* Dracula green */
-        #hud-tokens { color: #bd93f9; } /* Dracula purple */
-        #hud-cpu { color: #ff79c6; } /* Dracula pink */
-        #hud-mem { color: #f1fa8c; } /* Dracula yellow */
+
+        .btn-danger:hover {
+            background-color: #ff6e6e;
+        }
+
+        /* Command/Model lists */
+        .item-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #44475a;
+            border-radius: 4px;
+            background-color: #1e1f29;
+        }
+
+        .item-list-item {
+            padding: 10px;
+            border-bottom: 1px solid #44475a;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .item-list-item:hover {
+            background-color: #44475a;
+        }
+
+        .item-list-item.selected {
+            background-color: #6272a4;
+        }
+
+        .item-list-item:last-child {
+            border-bottom: none;
+        }
+
+        .item-title {
+            font-weight: bold;
+            color: #f8f8f2;
+        }
+
+        .item-description {
+            font-size: 0.85em;
+            color: #6272a4;
+            margin-top: 2px;
+        }
+
+        .item-shortcut {
+            font-size: 0.8em;
+            color: #ffb86c;
+            font-style: italic;
+        }
+
+        /* Form elements */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #f8f8f2;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #6272a4;
+            border-radius: 4px;
+            background-color: #44475a;
+            color: #f8f8f2;
+            font-family: monospace;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #bd93f9;
+        }
+
+        /* Progress bar */
+        #progress-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background-color: #44475a;
+            display: none;
+        }
+
+        #progress-bar {
+            height: 100%;
+            background-color: #50fa7b;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* Help overlay */
+        #help-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        #help-overlay.hidden {
+            display: none;
+        }
+
+        #help-content {
+            background-color: #282a36;
+            border: 1px solid #6272a4;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 80%;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+
+        .help-section {
+            margin-bottom: 20px;
+        }
+
+        .help-section h3 {
+            color: #ffb86c;
+            margin-bottom: 10px;
+        }
+
+        .help-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-family: monospace;
+        }
+
+        .help-key {
+            color: #bd93f9;
+            font-weight: bold;
+        }
+
+        .help-description {
+            color: #f8f8f2;
+        }
+
+        /* Completions */
+        #completions-container {
+            position: absolute;
+            bottom: 100%;
+            left: 10px;
+            right: 10px;
+            background-color: #282a36;
+            border: 1px solid #6272a4;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+            z-index: 100;
+        }
+
+        .completion-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #44475a;
+            cursor: pointer;
+        }
+
+        .completion-item:hover,
+        .completion-item.selected {
+            background-color: #44475a;
+        }
+
+        .completion-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .modal-content {
+                max-width: 95%;
+                max-height: 95%;
+            }
+
+            #status-bar {
+                flex-wrap: wrap;
+                font-size: 0.75em;
+            }
+
+            .status-item {
+                margin: 1px;
+            }
+        }
     </style>
 </head>
 <body>
-    <div id="hud-container">
-        <div id="hud-model">Model: N/A</div>
-        <div id="hud-cwd">CWD: N/A</div>
-        <div id="hud-tokens">Tokens: P:0 C:0 T:0</div>
-        <div id="hud-cpu">CPU: N/A</div>
-        <div id="hud-mem">Mem: N/A</div>
+    <!-- Status Bar -->
+    <div id="status-bar">
+        <div>
+            <span class="status-item" id="status-model">Model: N/A</span>
+            <span class="status-item" id="status-session">Session: N/A</span>
+        </div>
+        <div>
+            <span class="status-item" id="status-tokens">Tokens: P:0 C:0 T:0</span>
+            <span class="status-item" id="status-cwd">CWD: N/A</span>
+        </div>
+        <div>
+            <span class="status-item" id="status-cpu">CPU: N/A</span>
+            <span class="status-item" id="status-mem">Mem: N/A</span>
+        </div>
     </div>
-    <div id="chat-container">
-        <div id="messages"></div>
+
+    <!-- Progress Bar -->
+    <div id="progress-container">
+        <div id="progress-bar"></div>
     </div>
-    <div id="input-container">
-        <input type="text" id="message-input" placeholder="Type your message or command...">
-        <button id="send-button">Send</button>
+
+    <!-- Main Content -->
+    <div id="main-content">
+        <!-- Chat Container -->
+        <div id="chat-container">
+            <div id="messages"></div>
+        </div>
+
+        <!-- Input Container -->
+        <div id="input-container">
+            <textarea id="message-input" placeholder="Type your message or command... (Ctrl+Enter to send)" rows="1"></textarea>
+            <button id="send-button">Send</button>
+        </div>
+
+        <!-- Completions -->
+        <div id="completions-container"></div>
+    </div>
+
+    <!-- Help Overlay -->
+    <div id="help-overlay" class="hidden">
+        <div id="help-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Keyboard Shortcuts</h2>
+                <button class="modal-close" onclick="hideHelp()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="help-section">
+                    <h3>General</h3>
+                    <div class="help-item"><span class="help-key">Ctrl+Enter</span><span class="help-description">Send message</span></div>
+                    <div class="help-item"><span class="help-key">Ctrl+C</span><span class="help-description">Quit application</span></div>
+                    <div class="help-item"><span class="help-key">Ctrl+G</span><span class="help-description">Toggle help</span></div>
+                </div>
+                <div class="help-section">
+                    <h3>Commands</h3>
+                    <div class="help-item"><span class="help-key">Ctrl+K</span><span class="help-description">Open commands dialog</span></div>
+                    <div class="help-item"><span class="help-key">Ctrl+L</span><span class="help-description">Switch model</span></div>
+                    <div class="help-item"><span class="help-key">Ctrl+S</span><span class="help-description">Switch session</span></div>
+                    <div class="help-item"><span class="help-key">Ctrl+N</span><span class="help-description">New session</span></div>
+                    <div class="help-item"><span class="help-key">Ctrl+F</span><span class="help-description">Open file picker</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Commands Modal -->
+    <div id="commands-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Commands</h2>
+                <button class="modal-close" onclick="closeCommandsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 15px;">
+                    <button class="btn" onclick="showCommandType('system')" id="btn-system-commands">System Commands</button>
+                    <button class="btn" onclick="showCommandType('user')" id="btn-user-commands">User Commands</button>
+                    <button class="btn" onclick="showCommandType('mcp')" id="btn-mcp-commands">MCP Prompts</button>
+                </div>
+                <div class="item-list" id="commands-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeCommandsModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Models Modal -->
+    <div id="models-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Switch Model</h2>
+                <button class="modal-close" onclick="closeModelsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="item-list" id="models-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeModelsModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sessions Modal -->
+    <div id="sessions-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Switch Session</h2>
+                <button class="modal-close" onclick="closeSessionsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="item-list" id="sessions-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="createNewSession()">New Session</button>
+                <button class="btn" onclick="closeSessionsModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quit Modal -->
+    <div id="quit-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Quit Crush</h2>
+                <button class="modal-close" onclick="closeQuitModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to quit Crush?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger" onclick="quitApplication()">Quit</button>
+                <button class="btn" onclick="closeQuitModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Picker Modal -->
+    <div id="file-picker-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Select File</h2>
+                <button class="modal-close" onclick="closeFilePickerModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="file-path">File Path:</label>
+                    <input type="text" id="file-path" class="form-input" placeholder="Enter file path...">
+                </div>
+                <div class="item-list" id="file-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="selectFile()">Select</button>
+                <button class="btn" onclick="closeFilePickerModal()">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <script>
+        // Global state
+        let currentSessionId = null;
+        let ws = null;
+        let showHelp = false;
+        let completions = [];
+        let completionIndex = -1;
+        let availableCommands = [];
+        let availableModels = [];
+        let availableSessions = [];
+        let currentCommandType = 'system';
+        let isProcessing = false;
+
+        // DOM elements
         const messagesDiv = document.getElementById('messages');
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
-        const hudModelDiv = document.getElementById('hud-model');
-        const hudCwdDiv = document.getElementById('hud-cwd');
-        const hudTokensDiv = document.getElementById('hud-tokens');
-        const hudCpuDiv = document.getElementById('hud-cpu');
-        const hudMemDiv = document.getElementById('hud-mem');
-        const ws = new WebSocket('ws://' + window.location.host + '/ws');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const completionsContainer = document.getElementById('completions-container');
 
-        let currentSessionId = null;
+        // Status elements
+        const statusModel = document.getElementById('status-model');
+        const statusSession = document.getElementById('status-session');
+        const statusTokens = document.getElementById('status-tokens');
+        const statusCwd = document.getElementById('status-cwd');
+        const statusCpu = document.getElementById('status-cpu');
+        const statusMem = document.getElementById('status-mem');
 
-        ws.onopen = () => {
-            console.log('WebSocket connected');
-            // Initial message is now sent from the backend with session ID and HUD data
-        };
+        // Initialize WebSocket connection
+        function initWebSocket() {
+            ws = new WebSocket('ws://' + window.location.host + '/ws');
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'system' && data.sessionId) {
-                currentSessionId = data.sessionId;
-                appendMessage(data.sender, data.content);
-                updateHUD(data); // Update HUD with initial data
-            } else if (data.type === 'hudUpdate') {
-                updateHUD(data);
-            } else {
-                appendMessage(data.sender, data.content);
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                appendMessage('System', 'Disconnected from Crush AI.');
+                currentSessionId = null;
+                setTimeout(initWebSocket, 1000); // Reconnect after 1 second
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                appendMessage('System', 'WebSocket error: ' + error.message);
+            };
+        }
+
+        // Handle WebSocket messages
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'system':
+                    if (data.sessionId) {
+                        currentSessionId = data.sessionId;
+                        updateStatus(data);
+                    }
+                    appendMessage(data.sender, data.content);
+                    break;
+                case 'hudUpdate':
+                    updateStatus(data);
+                    break;
+                case 'chat':
+                    appendMessage(data.sender, data.content);
+                    hideProgress();
+                    break;
+                case 'error':
+                    appendMessage(data.sender, data.content);
+                    hideProgress();
+                    break;
+                case 'info':
+                    appendMessage(data.sender, data.content);
+                    break;
+                case 'commands':
+                    availableCommands = data.commands || [];
+                    break;
+                case 'models':
+                    availableModels = data.models || [];
+                    break;
+                case 'sessions':
+                    availableSessions = data.sessions || [];
+                    break;
+                default:
+                    appendMessage(data.sender || 'Unknown', data.content || JSON.stringify(data));
             }
-        };
+        }
 
-        ws.onclose = () => {
-            console.log('WebSocket disconnected');
-            appendMessage('System', 'Disconnected from Crush AI.');
-            currentSessionId = null;
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            appendMessage('System', 'WebSocket error: ' + error.message);
-        };
-
-        sendButton.onclick = sendMessage;
-        messageInput.onkeydown = (event) => {
-            if (event.key === 'Enter') {
-                sendMessage();
+        // Update status bar
+        function updateStatus(data) {
+            if (data.currentModel) {
+                statusModel.textContent = `Model: ${data.currentModel}`;
             }
-        };
+            if (data.sessionName) {
+                statusSession.textContent = `Session: ${data.sessionName}`;
+            }
+            if (data.cwd) {
+                statusCwd.textContent = `CWD: ${data.cwd}`;
+            }
+            if (data.promptTokens !== undefined && data.completionTokens !== undefined && data.totalTokens !== undefined) {
+                statusTokens.textContent = `Tokens: P:${data.promptTokens} C:${data.completionTokens} T:${data.totalTokens}`;
+            }
+            if (data.cpuUsage !== undefined) {
+                statusCpu.textContent = `CPU: ${data.cpuUsage.toFixed(1)}%`;
+            }
+            if (data.memUsedMB !== undefined && data.memTotalMB !== undefined) {
+                statusMem.textContent = `Mem: ${data.memUsedMB}MB / ${data.memTotalMB}MB`;
+            }
+        }
 
+        // Send message
         function sendMessage() {
-            const content = messageInput.value;
-            if (content.trim() === '') return;
+            const content = messageInput.value.trim();
+            if (content === '' || isProcessing) return;
 
             appendMessage('You', content);
-            
+            showProgress();
+
             let messageToSend;
             if (content.startsWith('/')) {
-                const parts = content.split(' ');
-                const command = parts[0];
-                const args = parts.slice(1);
-                messageToSend = { type: 'command', command: command, args: args, sessionId: currentSessionId };
+                messageToSend = { type: 'command', content: content, sessionId: currentSessionId };
             } else {
                 messageToSend = { type: 'message', content: content, sessionId: currentSessionId };
             }
 
             ws.send(JSON.stringify(messageToSend));
             messageInput.value = '';
+            hideCompletions();
+            isProcessing = true;
         }
 
+        // Show progress bar
+        function showProgress() {
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '100%';
+            isProcessing = true;
+        }
+
+        // Hide progress bar
+        function hideProgress() {
+            progressContainer.style.display = 'none';
+            progressBar.style.width = '0%';
+            isProcessing = false;
+        }
+
+        // Append message to chat
         function appendMessage(sender, content) {
             const messageElement = document.createElement('div');
+
             if (sender === 'System' && content.startsWith('Available commands:')) {
                 messageElement.innerHTML = `<strong>${sender}:</strong> `;
                 const commandsText = content.replace('Available commands: ', '');
                 const commands = commandsText.split(', ').map(cmd => cmd.trim());
-                
+
                 commands.forEach(cmd => {
                     const button = document.createElement('button');
                     button.textContent = cmd;
-                    button.classList.add('message-button'); // Add class for styling
+                    button.classList.add('message-button');
                     button.onclick = () => {
-                        messageInput.value = cmd;
+                        messageInput.value = `/${cmd}`;
                         messageInput.focus();
                     };
                     messageElement.appendChild(button);
@@ -201,15 +763,15 @@
                 messageElement.innerHTML = `<strong>${sender}:</strong> `;
                 const modelsText = content.replace('Available models:\n', '');
                 const models = modelsText.split('\n').filter(line => line.trim() !== '');
-                
+
                 models.forEach(modelLine => {
                     const match = modelLine.match(/^- (.+) \(Provider: (.+)\)$/);
                     if (match) {
                         const modelName = match[1];
                         const providerName = match[2];
                         const button = document.createElement('button');
-                        button.textContent = `${modelName} (Provider: ${providerName})`;
-                        button.classList.add('message-button'); // Add class for styling
+                        button.textContent = `${modelName} (${providerName})`;
+                        button.classList.add('message-button');
                         button.onclick = () => {
                             messageInput.value = `/model ${modelName}`;
                             messageInput.focus();
@@ -218,29 +780,444 @@
                     }
                 });
             } else {
-                messageElement.innerHTML = `<strong>${sender}:</strong> ${content}`;
+                messageElement.innerHTML = `<strong>${sender}:</strong> ${content.replace(/\n/g, '<br>')}`;
             }
+
             messagesDiv.appendChild(messageElement);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        function updateHUD(data) {
-            if (data.currentModel) {
-                hudModelDiv.textContent = `Model: ${data.currentModel}`;
+        // Commands modal functions
+        function openCommandsModal() {
+            document.getElementById('commands-modal').classList.remove('hidden');
+            showCommandType('system');
+            requestAvailableCommands();
+        }
+
+        function closeCommandsModal() {
+            document.getElementById('commands-modal').classList.add('hidden');
+        }
+
+        function showCommandType(type) {
+            currentCommandType = type;
+            document.getElementById('btn-system-commands').classList.toggle('btn-primary', type === 'system');
+            document.getElementById('btn-user-commands').classList.toggle('btn-primary', type === 'user');
+            document.getElementById('btn-mcp-commands').classList.toggle('btn-primary', type === 'mcp');
+            renderCommandsList();
+        }
+
+        function requestAvailableCommands() {
+            // Request commands from backend
+            ws.send(JSON.stringify({
+                type: 'get_commands',
+                sessionId: currentSessionId
+            }));
+        }
+
+        function renderCommandsList() {
+            const listElement = document.getElementById('commands-list');
+            listElement.innerHTML = '';
+
+            let commands = [];
+            switch (currentCommandType) {
+                case 'system':
+                    commands = [
+                        { id: 'new_session', title: 'New Session', description: 'Start a new session', shortcut: 'Ctrl+N' },
+                        { id: 'switch_session', title: 'Switch Session', description: 'Switch to a different session', shortcut: 'Ctrl+S' },
+                        { id: 'switch_model', title: 'Switch Model', description: 'Switch to a different model', shortcut: 'Ctrl+L' },
+                        { id: 'summarize', title: 'Summarize Session', description: 'Summarize the current session' },
+                        { id: 'file_picker', title: 'Open File Picker', description: 'Open file picker', shortcut: 'Ctrl+F' },
+                        { id: 'toggle_help', title: 'Toggle Help', description: 'Toggle help', shortcut: 'Ctrl+G' },
+                        { id: 'quit', title: 'Quit', description: 'Quit application', shortcut: 'Ctrl+C' },
+                    ];
+                    break;
+                case 'user':
+                    commands = availableCommands.filter(cmd => cmd.type === 'user') || [];
+                    break;
+                case 'mcp':
+                    commands = availableCommands.filter(cmd => cmd.type === 'mcp') || [];
+                    break;
             }
-            if (data.cwd) {
-                hudCwdDiv.textContent = `CWD: ${data.cwd}`;
-            }
-            if (data.promptTokens !== undefined && data.completionTokens !== undefined && data.totalTokens !== undefined) {
-                hudTokensDiv.textContent = `Tokens: P:${data.promptTokens} C:${data.completionTokens} T:${data.totalTokens}`;
-            }
-            if (data.cpuUsage !== undefined) {
-                hudCpuDiv.textContent = `CPU: ${data.cpuUsage.toFixed(1)}%`;
-            }
-            if (data.memUsedMB !== undefined && data.memTotalMB !== undefined) {
-                hudMemDiv.textContent = `Mem: ${data.memUsedMB}MB / ${data.memTotalMB}MB (${data.memUsage.toFixed(1)}%)`;
+
+            commands.forEach((cmd, index) => {
+                const item = document.createElement('div');
+                item.className = 'item-list-item';
+                item.onclick = () => executeCommand(cmd.id);
+
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'item-title';
+                titleDiv.textContent = cmd.title;
+
+                const descDiv = document.createElement('div');
+                descDiv.className = 'item-description';
+                descDiv.textContent = cmd.description;
+
+                const shortcutDiv = document.createElement('div');
+                shortcutDiv.className = 'item-shortcut';
+                shortcutDiv.textContent = cmd.shortcut || '';
+
+                item.appendChild(titleDiv);
+                if (cmd.description) item.appendChild(descDiv);
+                if (cmd.shortcut) item.appendChild(shortcutDiv);
+
+                listElement.appendChild(item);
+            });
+        }
+
+        function executeCommand(commandId) {
+            closeCommandsModal();
+
+            switch (commandId) {
+                case 'new_session':
+                    createNewSession();
+                    break;
+                case 'switch_session':
+                    openSessionsModal();
+                    break;
+                case 'switch_model':
+                    openModelsModal();
+                    break;
+                case 'file_picker':
+                    openFilePickerModal();
+                    break;
+                case 'toggle_help':
+                    toggleHelp();
+                    break;
+                case 'quit':
+                    openQuitModal();
+                    break;
+                default:
+                    // Send command to backend
+                    ws.send(JSON.stringify({
+                        type: 'execute_command',
+                        command: commandId,
+                        sessionId: currentSessionId
+                    }));
             }
         }
+
+        // Models modal functions
+        function openModelsModal() {
+            document.getElementById('models-modal').classList.remove('hidden');
+            requestAvailableModels();
+        }
+
+        function closeModelsModal() {
+            document.getElementById('models-modal').classList.add('hidden');
+        }
+
+        function requestAvailableModels() {
+            ws.send(JSON.stringify({
+                type: 'get_models',
+                sessionId: currentSessionId
+            }));
+        }
+
+        function renderModelsList() {
+            const listElement = document.getElementById('models-list');
+            listElement.innerHTML = '';
+
+            availableModels.forEach(model => {
+                const item = document.createElement('div');
+                item.className = 'item-list-item';
+                item.onclick = () => switchToModel(model.id);
+
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'item-title';
+                titleDiv.textContent = model.name;
+
+                const descDiv = document.createElement('div');
+                descDiv.className = 'item-description';
+                descDiv.textContent = `Provider: ${model.provider}`;
+
+                item.appendChild(titleDiv);
+                item.appendChild(descDiv);
+                listElement.appendChild(item);
+            });
+        }
+
+        function switchToModel(modelId) {
+            closeModelsModal();
+            ws.send(JSON.stringify({
+                type: 'switch_model',
+                modelId: modelId,
+                sessionId: currentSessionId
+            }));
+        }
+
+        // Sessions modal functions
+        function openSessionsModal() {
+            document.getElementById('sessions-modal').classList.remove('hidden');
+            requestAvailableSessions();
+        }
+
+        function closeSessionsModal() {
+            document.getElementById('sessions-modal').classList.add('hidden');
+        }
+
+        function requestAvailableSessions() {
+            ws.send(JSON.stringify({
+                type: 'get_sessions',
+                sessionId: currentSessionId
+            }));
+        }
+
+        function renderSessionsList() {
+            const listElement = document.getElementById('sessions-list');
+            listElement.innerHTML = '';
+
+            availableSessions.forEach(session => {
+                const item = document.createElement('div');
+                item.className = 'item-list-item';
+                item.onclick = () => switchToSession(session.id);
+
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'item-title';
+                titleDiv.textContent = session.name;
+
+                const descDiv = document.createElement('div');
+                descDiv.className = 'item-description';
+                descDiv.textContent = `Created: ${new Date(session.createdAt).toLocaleString()}`;
+
+                item.appendChild(titleDiv);
+                item.appendChild(descDiv);
+                listElement.appendChild(item);
+            });
+        }
+
+        function switchToSession(sessionId) {
+            closeSessionsModal();
+            ws.send(JSON.stringify({
+                type: 'switch_session',
+                targetSessionId: sessionId,
+                sessionId: currentSessionId
+            }));
+            currentSessionId = sessionId;
+        }
+
+        function createNewSession() {
+            closeSessionsModal();
+            ws.send(JSON.stringify({
+                type: 'new_session',
+                sessionId: currentSessionId
+            }));
+        }
+
+        // Quit modal functions
+        function openQuitModal() {
+            document.getElementById('quit-modal').classList.remove('hidden');
+        }
+
+        function closeQuitModal() {
+            document.getElementById('quit-modal').classList.add('hidden');
+        }
+
+        function quitApplication() {
+            closeQuitModal();
+            ws.send(JSON.stringify({
+                type: 'quit',
+                sessionId: currentSessionId
+            }));
+            window.close();
+        }
+
+        // File picker modal functions
+        function openFilePickerModal() {
+            document.getElementById('file-picker-modal').classList.remove('hidden');
+            requestFileList();
+        }
+
+        function closeFilePickerModal() {
+            document.getElementById('file-picker-modal').classList.add('hidden');
+        }
+
+        function requestFileList() {
+            ws.send(JSON.stringify({
+                type: 'get_files',
+                path: document.getElementById('file-path').value || '.',
+                sessionId: currentSessionId
+            }));
+        }
+
+        function selectFile() {
+            const filePath = document.getElementById('file-path').value;
+            if (filePath) {
+                closeFilePickerModal();
+                // Attach file to next message
+                appendMessage('System', `Selected file: ${filePath}`);
+            }
+        }
+
+        // Help functions
+        function toggleHelp() {
+            const helpOverlay = document.getElementById('help-overlay');
+            if (helpOverlay.classList.contains('hidden')) {
+                helpOverlay.classList.remove('hidden');
+            } else {
+                helpOverlay.classList.add('hidden');
+            }
+        }
+
+        function hideHelp() {
+            document.getElementById('help-overlay').classList.add('hidden');
+        }
+
+        // Completions functions
+        function showCompletions(comps) {
+            completions = comps;
+            completionIndex = -1;
+            renderCompletions();
+            completionsContainer.style.display = 'block';
+        }
+
+        function hideCompletions() {
+            completionsContainer.style.display = 'none';
+            completions = [];
+            completionIndex = -1;
+        }
+
+        function renderCompletions() {
+            completionsContainer.innerHTML = '';
+            completions.forEach((comp, index) => {
+                const item = document.createElement('div');
+                item.className = `completion-item ${index === completionIndex ? 'selected' : ''}`;
+                item.textContent = comp;
+                item.onclick = () => selectCompletion(index);
+                completionsContainer.appendChild(item);
+            });
+        }
+
+        function selectCompletion(index) {
+            if (completions[index]) {
+                messageInput.value = completions[index];
+                hideCompletions();
+                messageInput.focus();
+            }
+        }
+
+        function navigateCompletions(direction) {
+            if (completions.length === 0) return;
+
+            completionIndex += direction;
+            if (completionIndex < 0) completionIndex = completions.length - 1;
+            if (completionIndex >= completions.length) completionIndex = 0;
+
+            renderCompletions();
+        }
+
+        // Keyboard event handlers
+        document.addEventListener('keydown', (event) => {
+            // Handle completions navigation first
+            if (completionsContainer.style.display !== 'none') {
+                switch (event.key) {
+                    case 'ArrowUp':
+                        event.preventDefault();
+                        navigateCompletions(-1);
+                        return;
+                    case 'ArrowDown':
+                        event.preventDefault();
+                        navigateCompletions(1);
+                        return;
+                    case 'Enter':
+                    case 'Tab':
+                        event.preventDefault();
+                        selectCompletion(completionIndex);
+                        return;
+                    case 'Escape':
+                        hideCompletions();
+                        return;
+                }
+            }
+
+            // Handle modal-specific shortcuts
+            if (!document.querySelector('.modal:not(.hidden)')) {
+                // Global shortcuts
+                if (event.ctrlKey) {
+                    switch (event.key) {
+                        case 'Enter':
+                            event.preventDefault();
+                            sendMessage();
+                            break;
+                        case 'k':
+                            event.preventDefault();
+                            openCommandsModal();
+                            break;
+                        case 'l':
+                            event.preventDefault();
+                            openModelsModal();
+                            break;
+                        case 's':
+                            event.preventDefault();
+                            openSessionsModal();
+                            break;
+                        case 'n':
+                            event.preventDefault();
+                            createNewSession();
+                            break;
+                        case 'f':
+                            event.preventDefault();
+                            openFilePickerModal();
+                            break;
+                        case 'g':
+                            event.preventDefault();
+                            toggleHelp();
+                            break;
+                        case 'c':
+                            event.preventDefault();
+                            openQuitModal();
+                            break;
+                    }
+                }
+            } else {
+                // Modal is open, handle modal shortcuts
+                if (event.key === 'Escape') {
+                    // Close any open modal
+                    const openModal = document.querySelector('.modal:not(.hidden)');
+                    if (openModal) {
+                        const modalId = openModal.id;
+                        switch (modalId) {
+                            case 'commands-modal':
+                                closeCommandsModal();
+                                break;
+                            case 'models-modal':
+                                closeModelsModal();
+                                break;
+                            case 'sessions-modal':
+                                closeSessionsModal();
+                                break;
+                            case 'quit-modal':
+                                closeQuitModal();
+                                break;
+                            case 'file-picker-modal':
+                                closeFilePickerModal();
+                                break;
+                        }
+                    }
+                }
+            }
+        });
+
+        // Auto-resize textarea
+        messageInput.addEventListener('input', () => {
+            messageInput.style.height = 'auto';
+            messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
+        });
+
+        // Initialize the application
+        initWebSocket();
+
+        // Focus on input when page loads
+        messageInput.focus();
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Page is hidden, pause updates if needed
+            } else {
+                // Page is visible again, resume updates
+                messageInput.focus();
+            }
+        });
     </script>
 </body>
 </html>
