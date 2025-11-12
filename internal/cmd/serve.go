@@ -338,15 +338,18 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 
 	switch clientMsg.Type {
 	case "message":
+		slog.Info("Processing message", "sessionID", sess.ID, "content", clientMsg.Content)
 		// Handle message processing in a separate goroutine
 		go func() {
 			// Subscribe to messages from the app
 			messageEvents := appInstance.Messages.Subscribe(context.Background())
+			slog.Info("Subscribed to message events", "sessionID", sess.ID)
 
 			// Run the agent coordinator
+			slog.Info("Running agent coordinator", "sessionID", sess.ID, "content", clientMsg.Content)
 			_, err := appInstance.AgentCoordinator.Run(context.Background(), sess.ID, clientMsg.Content)
 			if err != nil {
-				slog.Error("AgentCoordinator.Run failed", "error", err)
+				slog.Error("AgentCoordinator.Run failed", "error", err, "sessionID", sess.ID)
 				// Send error back to client
 				errorResponse := struct {
 					Type    string `json:"type"`
@@ -360,14 +363,19 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 				sendResponse(clientMessageChan, errorResponse)
 				return
 			}
+			slog.Info("Agent coordinator completed", "sessionID", sess.ID)
 
 			// Stream messages back to the client
+			messageCount := 0
 			for {
 				select {
 				case event := <-messageEvents:
 					msg := event.Payload
+					slog.Info("Received message event", "msgSessionID", msg.SessionID, "sessionID", sess.ID, "role", msg.Role, "parts", len(msg.Parts))
 					if msg.SessionID == sess.ID && msg.Role == message.Assistant && len(msg.Parts) > 0 {
 						content := msg.Content().String()
+						slog.Info("Sending chat response", "sessionID", sess.ID, "contentLength", len(content))
+						messageCount++
 						// TODO: Handle delta updates
 						chatResponse := struct {
 							Type    string `json:"type"`
@@ -381,11 +389,12 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 						sendResponse(clientMessageChan, chatResponse)
 					}
 				case <-time.After(30 * time.Second): // Timeout after 30 seconds of no messages
+					slog.Info("Message processing timeout", "sessionID", sess.ID, "messageCount", messageCount)
 					// Send HUD update for tokens after response is complete
 					sendHUDUpdate()
 					return
 				case <-ctx.Done(): // Client disconnected
-					slog.Info("Client disconnected during AI response streaming")
+					slog.Info("Client disconnected during AI response streaming", "sessionID", sess.ID)
 					return
 				}
 			}
