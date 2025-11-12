@@ -206,6 +206,7 @@ func TestConfig_configureProvidersBedrockWithCredentials(t *testing.T) {
 }
 
 func TestConfig_configureProvidersBedrockWithoutCredentials(t *testing.T) {
+	t.Setenv("CRUSH_TEST_NO_AWS_CREDS_FILE", "true")
 	knownProviders := []catwalk.Provider{
 		{
 			ID:          catwalk.InferenceProviderBedrock,
@@ -224,7 +225,7 @@ func TestConfig_configureProvidersBedrockWithoutCredentials(t *testing.T) {
 	err := cfg.configureProviders(env, resolver, knownProviders)
 	require.NoError(t, err)
 	// Provider should not be configured without credentials
-	require.Equal(t, cfg.Providers.Len(), 0)
+	require.Equal(t, 0, cfg.Providers.Len())
 }
 
 func TestConfig_configureProvidersBedrockWithoutUnsupportedModel(t *testing.T) {
@@ -766,6 +767,7 @@ func TestConfig_configureProvidersEnhancedCredentialValidation(t *testing.T) {
 	})
 
 	t.Run("Bedrock provider removed when AWS credentials missing with existing config", func(t *testing.T) {
+		t.Setenv("CRUSH_TEST_NO_AWS_CREDS_FILE", "true")
 		knownProviders := []catwalk.Provider{
 			{
 				ID:          catwalk.InferenceProviderBedrock,

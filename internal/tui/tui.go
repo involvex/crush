@@ -438,6 +438,12 @@ func (a *appModel) handleWindowResize(width, height int) tea.Cmd {
 func (a *appModel) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 	// Check this first as the user should be able to quit no matter what.
 	if key.Matches(msg, a.keyMap.Quit) {
+		if a.app.AgentCoordinator != nil && a.app.AgentCoordinator.IsBusy() {
+			if a.selectedSessionID != "" {
+				a.app.AgentCoordinator.Cancel(a.selectedSessionID)
+				return util.ReportInfo("Cancelling request...")
+			}
+		}
 		if a.dialog.ActiveDialogID() == quit.QuitDialogID {
 			return tea.Quit
 		}

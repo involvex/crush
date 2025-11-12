@@ -658,8 +658,10 @@ func hasAWSCredentials(env env.Env) bool {
 		return true
 	}
 
-	if _, err := os.Stat(filepath.Join(home.Dir(), ".aws/credentials")); err == nil {
-		return true
+	if os.Getenv("CRUSH_TEST_NO_AWS_CREDS_FILE") != "true" {
+		if _, err := os.Stat(filepath.Join(home.Dir(), ".aws/credentials")); err == nil {
+			return true
+		}
 	}
 
 	return false
