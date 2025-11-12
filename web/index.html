@@ -118,6 +118,11 @@
             align-self: flex-end;
         }
 
+        #send-button:disabled {
+            background-color: #6272a4;
+            cursor: not-allowed;
+        }
+
         #send-button:hover {
             background-color: #ff79c6;
         }
@@ -1164,6 +1169,8 @@
 
         // Keyboard event handlers
         document.addEventListener('keydown', (event) => {
+            console.log('Key pressed:', event.key, 'ctrlKey:', event.ctrlKey, 'target:', event.target.id);
+
             // Handle completions navigation first
             if (completionsContainer.style.display !== 'none') {
                 switch (event.key) {
@@ -1192,6 +1199,7 @@
                 if (event.ctrlKey) {
                     switch (event.key) {
                         case 'Enter':
+                            console.log('Ctrl+Enter detected, calling sendMessage()');
                             event.preventDefault();
                             sendMessage();
                             break;
@@ -1224,6 +1232,10 @@
                             openQuitModal();
                             break;
                     }
+                } else if (event.key === 'Enter' && !event.shiftKey && event.target.id === 'message-input') {
+                    console.log('Enter key detected in message input, calling sendMessage()');
+                    event.preventDefault();
+                    sendMessage();
                 }
             } else {
                 // Modal is open, handle modal shortcuts
@@ -1266,6 +1278,12 @@
         // Add click handler for session status
         statusSession.addEventListener('click', () => {
             openSessionsModal();
+        });
+
+        // Add click handler for send button
+        sendButton.addEventListener('click', () => {
+            console.log('Send button clicked, calling sendMessage()');
+            sendMessage();
         });
 
         // Focus on input when page loads
