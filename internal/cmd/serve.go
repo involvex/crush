@@ -119,20 +119,28 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 		slog.Info("Web session removed", "webSessionID", webSessionID)
 	}()
 
-	// Send the session ID to the client
+	// Get initial HUD data
+	currentModel := appInstance.Config().Models[config.SelectedModelTypeLarge].Model
+	cwd, _ := os.Getwd()
+
+	// Send the session ID and initial HUD data to the client
 	initialMessage := struct {
-		Type      string `json:"type"`
-		Sender    string `json:"sender"`
-		Content   string `json:"content"`
-		SessionID string `json:"sessionId"`
+		Type         string `json:"type"`
+		Sender       string `json:"sender"`
+		Content      string `json:"content"`
+		SessionID    string `json:"sessionId"`
+		CurrentModel string `json:"currentModel"`
+		CWD          string `json:"cwd"`
 	}{
-		Type:      "system",
-		Sender:    "System",
-		Content:   "Connected to Crush AI. Type /help for commands.",
-		SessionID: webSessionID,
+		Type:         "system",
+		Sender:       "System",
+		Content:      "Connected to Crush AI. Type /help for commands.",
+		SessionID:    webSessionID,
+		CurrentModel: currentModel,
+		CWD:          cwd,
 	}
 	if err := conn.WriteJSON(initialMessage); err != nil {
-		slog.Error("Failed to send initial message with session ID", "error", err)
+		slog.Error("Failed to send initial message with session ID and HUD data", "error", err)
 		return
 	}
 
@@ -180,6 +188,15 @@ func handleClientConnection(appInstance *app.App, conn *websocket.Conn, ctx cont
 	}
 }
 
+type HUDUpdate struct {
+	Type             string `json:"type"`
+	CurrentModel     string `json:"currentModel"`
+	CWD              string `json:"cwd"`
+	PromptTokens     int64  `json:"promptTokens"`
+	CompletionTokens int64  `json:"completionTokens"`
+	TotalTokens      int64  `json:"totalTokens"`
+}
+
 func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg struct {
 	Type      string   `json:"type"`
 	Content   string   `json:"content"`
@@ -208,6 +225,21 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 		return
 	}
 
+	// Helper to send HUD updates
+	sendHUDUpdate := func() {
+		currentModel := appInstance.Config().Models[config.SelectedModelTypeLarge].Model
+		cwd, _ := os.Getwd()
+		hud := HUDUpdate{
+			Type:             "hudUpdate",
+			CurrentModel:     currentModel,
+			CWD:              cwd,
+			PromptTokens:     sess.PromptTokens,
+			CompletionTokens: sess.CompletionTokens,
+			TotalTokens:      sess.PromptTokens + sess.CompletionTokens,
+		}
+		sendResponse(clientMessageChan, hud)
+	}
+
 	switch clientMsg.Type {
 	case "message":
 		// Subscribe to messages from the app
@@ -229,6 +261,8 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 				}
 				sendResponse(clientMessageChan, errorResponse)
 			}
+			// After AI response, send HUD update for tokens
+			sendHUDUpdate()
 		}()
 
 		// Stream messages back to the client
@@ -274,6 +308,7 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 					serverResponse.Type = "info"
 					serverResponse.Sender = "System"
 					serverResponse.Content = fmt.Sprintf("Directory changed to %s", newCwd)
+					sendHUDUpdate() // Send HUD update after CWD changes
 				}
 			}
 		case "/help":
@@ -334,6 +369,7 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 						serverResponse.Type = "info"
 						serverResponse.Sender = "System"
 						serverResponse.Content = fmt.Sprintf("Preferred model set to %s (Provider: %s)", foundModel.Model, foundProviderID)
+						sendHUDUpdate() // Send HUD update after model changes
 					}
 				}
 			}

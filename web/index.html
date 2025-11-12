@@ -74,9 +74,31 @@
             background-color: #8be9fd; /* Dracula cyan on hover */
             color: #282a36;
         }
+        #hud-container {
+            display: flex;
+            justify-content: space-around;
+            padding: 10px;
+            background-color: #44475a; /* Darker background for HUD */
+            border-bottom: 1px solid #6272a4;
+            font-size: 0.9em;
+        }
+        #hud-container div {
+            padding: 5px 10px;
+            border-radius: 3px;
+            background-color: #282a36;
+            color: #f8f8f2;
+        }
+        #hud-model { color: #ffb86c; } /* Dracula orange */
+        #hud-cwd { color: #50fa7b; } /* Dracula green */
+        #hud-tokens { color: #bd93f9; } /* Dracula purple */
     </style>
 </head>
 <body>
+    <div id="hud-container">
+        <div id="hud-model">Model: N/A</div>
+        <div id="hud-cwd">CWD: N/A</div>
+        <div id="hud-tokens">Tokens: P:0 C:0 T:0</div>
+    </div>
     <div id="chat-container">
         <div id="messages"></div>
     </div>
@@ -89,13 +111,16 @@
         const messagesDiv = document.getElementById('messages');
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
+        const hudModelDiv = document.getElementById('hud-model');
+        const hudCwdDiv = document.getElementById('hud-cwd');
+        const hudTokensDiv = document.getElementById('hud-tokens');
         const ws = new WebSocket('ws://' + window.location.host + '/ws');
 
         let currentSessionId = null;
 
         ws.onopen = () => {
             console.log('WebSocket connected');
-            // Initial message is now sent from the backend with session ID
+            // Initial message is now sent from the backend with session ID and HUD data
         };
 
         ws.onmessage = (event) => {
@@ -103,6 +128,9 @@
             if (data.type === 'system' && data.sessionId) {
                 currentSessionId = data.sessionId;
                 appendMessage(data.sender, data.content);
+                updateHUD(data); // Update HUD with initial data
+            } else if (data.type === 'hudUpdate') {
+                updateHUD(data);
             } else {
                 appendMessage(data.sender, data.content);
             }
@@ -156,12 +184,7 @@
                 commands.forEach(cmd => {
                     const button = document.createElement('button');
                     button.textContent = cmd;
-                    button.style.marginRight = '5px';
-                    button.style.padding = '5px 10px';
-                    button.style.backgroundColor = '#e9e9e9';
-                    button.style.border = '1px solid #ccc';
-                    button.style.borderRadius = '3px';
-                    button.style.cursor = 'pointer';
+                    button.classList.add('message-button'); // Add class for styling
                     button.onclick = () => {
                         messageInput.value = cmd;
                         messageInput.focus();
@@ -180,13 +203,7 @@
                         const providerName = match[2];
                         const button = document.createElement('button');
                         button.textContent = `${modelName} (Provider: ${providerName})`;
-                        button.style.marginRight = '5px';
-                        button.style.marginBottom = '5px';
-                        button.style.padding = '5px 10px';
-                        button.style.backgroundColor = '#e9e9e9';
-                        button.style.border = '1px solid #ccc';
-                        button.style.borderRadius = '3px';
-                        button.style.cursor = 'pointer';
+                        button.classList.add('message-button'); // Add class for styling
                         button.onclick = () => {
                             messageInput.value = `/model ${modelName}`;
                             messageInput.focus();
@@ -199,6 +216,18 @@
             }
             messagesDiv.appendChild(messageElement);
             messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll to bottom
+        }
+
+        function updateHUD(data) {
+            if (data.currentModel) {
+                hudModelDiv.textContent = `Model: ${data.currentModel}`;
+            }
+            if (data.cwd) {
+                hudCwdDiv.textContent = `CWD: ${data.cwd}`;
+            }
+            if (data.promptTokens !== undefined && data.completionTokens !== undefined && data.totalTokens !== undefined) {
+                hudTokensDiv.textContent = `Tokens: P:${data.promptTokens} C:${data.completionTokens} T:${data.totalTokens}`;
+            }
         }
     </script>
 </body>
