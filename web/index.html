@@ -3,13 +3,77 @@
 <head>
     <title>Crush Web Interface</title>
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
-        #chat-container { flex-grow: 1; overflow-y: auto; padding: 10px; border-bottom: 1px solid #ccc; }
-        #messages div { margin-bottom: 5px; }
-        #input-container { display: flex; padding: 10px; }
-        #message-input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        #send-button { margin-left: 10px; padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        #send-button:hover { background-color: #0056b3; }
+        body {
+            font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: #282a36; /* Dracula background */
+            color: #f8f8f2; /* Dracula foreground */
+        }
+        #chat-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            border-bottom: 1px solid #44475a; /* Darker border */
+        }
+        #messages div {
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        #messages strong {
+            color: #50fa7b; /* Green for sender */
+        }
+        #input-container {
+            display: flex;
+            padding: 10px;
+            background-color: #383a59; /* Slightly lighter dark for input area */
+        }
+        #message-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #6272a4; /* Dracula comment color for border */
+            border-radius: 4px;
+            background-color: #44475a; /* Darker input background */
+            color: #f8f8f2; /* Light text */
+            font-family: monospace;
+            font-size: 1em;
+        }
+        #message-input::placeholder {
+            color: #bd93f9; /* Dracula purple for placeholder */
+        }
+        #send-button {
+            margin-left: 10px;
+            padding: 10px 20px;
+            background-color: #bd93f9; /* Dracula purple accent */
+            color: #282a36; /* Dark text on button */
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+        }
+        #send-button:hover {
+            background-color: #ff79c6; /* Dracula pink on hover */
+        }
+        .message-button { /* Styling for interactive command/model buttons */
+            margin-right: 5px;
+            margin-bottom: 5px;
+            padding: 5px 10px;
+            background-color: #6272a4; /* Dracula comment color */
+            color: #f8f8f2; /* Light text */
+            border: 1px solid #44475a;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .message-button:hover {
+            background-color: #8be9fd; /* Dracula cyan on hover */
+            color: #282a36;
+        }
     </style>
 </head>
 <body>
@@ -76,7 +140,55 @@
 
         function appendMessage(sender, content) {
             const messageElement = document.createElement('div');
-            messageElement.innerHTML = `<strong>${sender}:</strong> ${content}`;
+            if (sender === 'System' && content.startsWith('Available commands:')) {
+                messageElement.innerHTML = `<strong>${sender}:</strong> `;
+                const commandsText = content.replace('Available commands: ', '');
+                const commands = commandsText.split(', ').map(cmd => cmd.trim());
+                
+                commands.forEach(cmd => {
+                    const button = document.createElement('button');
+                    button.textContent = cmd;
+                    button.style.marginRight = '5px';
+                    button.style.padding = '5px 10px';
+                    button.style.backgroundColor = '#e9e9e9';
+                    button.style.border = '1px solid #ccc';
+                    button.style.borderRadius = '3px';
+                    button.style.cursor = 'pointer';
+                    button.onclick = () => {
+                        messageInput.value = cmd;
+                        messageInput.focus();
+                    };
+                    messageElement.appendChild(button);
+                });
+            } else if (sender === 'System' && content.startsWith('Available models:')) {
+                messageElement.innerHTML = `<strong>${sender}:</strong> `;
+                const modelsText = content.replace('Available models:\n', '');
+                const models = modelsText.split('\n').filter(line => line.trim() !== '');
+                
+                models.forEach(modelLine => {
+                    const match = modelLine.match(/^- (.+) \(Provider: (.+)\)$/);
+                    if (match) {
+                        const modelName = match[1];
+                        const providerName = match[2];
+                        const button = document.createElement('button');
+                        button.textContent = `${modelName} (Provider: ${providerName})`;
+                        button.style.marginRight = '5px';
+                        button.style.marginBottom = '5px';
+                        button.style.padding = '5px 10px';
+                        button.style.backgroundColor = '#e9e9e9';
+                        button.style.border = '1px solid #ccc';
+                        button.style.borderRadius = '3px';
+                        button.style.cursor = 'pointer';
+                        button.onclick = () => {
+                            messageInput.value = `/model ${modelName}`;
+                            messageInput.focus();
+                        };
+                        messageElement.appendChild(button);
+                    }
+                });
+            } else {
+                messageElement.innerHTML = `<strong>${sender}:</strong> ${content}`;
+            }
             messagesDiv.appendChild(messageElement);
             messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll to bottom
         }
