@@ -64,6 +64,9 @@ var (
 	port              int
 	activeWebSessions = make(map[string]*session.Session)
 	sessionMutex      sync.Mutex
+	// Map WebSocket session ID to current chat session ID
+	webSessionToChatSession = make(map[string]string)
+	webSessionMutex         sync.Mutex
 )
 
 var upgrader = websocket.Upgrader{
@@ -616,8 +619,32 @@ func processClientMessage(appInstance *app.App, conn *websocket.Conn, clientMsg 
 		}
 		sendResponse(clientMessageChan, serverResponse)
 	case "switch_session":
-		// Switch to the target session
-		// For web UI, we just acknowledge the switch - the client handles session state
+		targetSessionId := clientMsg.Content
+
+		// Verify the target session exists
+		_, err := appInstance.Sessions.Get(context.Background(), targetSessionId)
+		if err != nil {
+			serverResponse.Type = "error"
+			serverResponse.Sender = "System"
+			serverResponse.Content = fmt.Sprintf("Error: Session not found: %v", err)
+			sendResponse(clientMessageChan, serverResponse)
+			return
+		}
+
+		// Update the mapping from web session to chat session
+		webSessionMutex.Lock()
+		webSessionToChatSession[clientMsg.SessionID] = targetSessionId
+		webSessionMutex.Unlock()
+
+		// Update activeWebSessions to point to the target session
+		sessionMutex.Lock()
+		// Get the target session
+		targetSess, err := appInstance.Sessions.Get(context.Background(), targetSessionId)
+		if err == nil {
+			activeWebSessions[clientMsg.SessionID] = &targetSess
+		}
+		sessionMutex.Unlock()
+
 		serverResponse.Type = "info"
 		serverResponse.Sender = "System"
 		serverResponse.Content = "Switched to session"

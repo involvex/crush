@@ -39,7 +39,8 @@
         }
 
         #status-model { color: #ffb86c; }
-        #status-session { color: #50fa7b; }
+        #status-session { color: #50fa7b; cursor: pointer; }
+        #status-session:hover { background-color: #6272a4; }
         #status-tokens { color: #bd93f9; }
         #status-cwd { color: #8be9fd; }
         #status-cpu { color: #ff79c6; }
@@ -671,12 +672,15 @@
                     break;
                 case 'commands':
                     availableCommands = data.commands || [];
+                    renderCommandsList();
                     break;
                 case 'models':
                     availableModels = data.models || [];
+                    renderModelsList();
                     break;
                 case 'sessions':
                     availableSessions = data.sessions || [];
+                    renderSessionsList();
                     break;
                 default:
                     appendMessage(data.sender || 'Unknown', data.content || JSON.stringify(data));
@@ -689,7 +693,8 @@
                 statusModel.textContent = `Model: ${data.currentModel}`;
             }
             if (data.sessionName) {
-                statusSession.textContent = `Session: ${data.sessionName}`;
+                const sessionCount = availableSessions.length > 0 ? ` (${availableSessions.length})` : '';
+                statusSession.textContent = `Session: ${data.sessionName}${sessionCount}`;
             }
             if (data.cwd) {
                 statusCwd.textContent = `CWD: ${data.cwd}`;
@@ -720,10 +725,23 @@
                 messageToSend = { type: 'message', content: content, sessionId: currentSessionId };
             }
 
-            ws.send(JSON.stringify(messageToSend));
-            messageInput.value = '';
-            hideCompletions();
-            isProcessing = true;
+            try {
+                ws.send(JSON.stringify(messageToSend));
+                messageInput.value = '';
+                hideCompletions();
+                isProcessing = true;
+
+                // Set a timeout to reset processing state if no response
+                setTimeout(() => {
+                    if (isProcessing) {
+                        hideProgress();
+                        appendMessage('System', 'Request timed out. You can try sending your message again.');
+                    }
+                }, 30000); // 30 second timeout
+            } catch (error) {
+                hideProgress();
+                appendMessage('System', 'Failed to send message: ' + error.message);
+            }
         }
 
         // Show progress bar
@@ -989,10 +1007,13 @@
             closeSessionsModal();
             ws.send(JSON.stringify({
                 type: 'switch_session',
-                targetSessionId: sessionId,
+                content: sessionId,
                 sessionId: currentSessionId
             }));
             currentSessionId = sessionId;
+            // Clear messages and show session switch message
+            messagesDiv.innerHTML = '';
+            appendMessage('System', `Switched to session: ${sessionId}`);
         }
 
         function createNewSession() {
@@ -1205,6 +1226,11 @@
 
         // Initialize the application
         initWebSocket();
+
+        // Add click handler for session status
+        statusSession.addEventListener('click', () => {
+            openSessionsModal();
+        });
 
         // Focus on input when page loads
         messageInput.focus();
